@@ -30,6 +30,12 @@ library(raster)
 ```{r giss_met_data}
 
 data_met_base_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.base.ymonmean.nc4'))
+data_met_119_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim119.2090s.ymonmean.nc4'))
+data_met_126_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim126.2090s.ymonmean.nc4'))
+data_met_245_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim245.2090s.ymonmean.nc4'))
+data_met_370_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim370.2090s.ymonmean.nc4'))
+data_met_434_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim434.2090s.ymonmean.nc4'))
+data_met_460_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim460.2090s.ymonmean.nc4'))
 data_met_585_giss <- open.nc(file.path('data','GISS','GEOSChem.E21.StateMet.clim585.2090s.ymonmean.nc4'))
 
 #PBL height
@@ -39,6 +45,18 @@ pblh_delta_585 <- (pblh_585 - pblh_base)
 
 # surface temperature (K)
 t_base <- apply(var.get.nc(data_met_base_giss,'Met_TS'),c(1,2),mean)
+t_119 <- apply(var.get.nc(data_met_119_giss,'Met_TS'),c(1,2),mean)
+t_delta_119 <- (t_119 - t_base)
+t_126 <- apply(var.get.nc(data_met_126_giss,'Met_TS'),c(1,2),mean)
+t_delta_126 <- (t_126 - t_base)
+t_434 <- apply(var.get.nc(data_met_434_giss,'Met_TS'),c(1,2),mean)
+t_delta_434 <- (t_434 - t_base)
+t_460 <- apply(var.get.nc(data_met_460_giss,'Met_TS'),c(1,2),mean)
+t_delta_460 <- (t_460 - t_base)
+t_370 <- apply(var.get.nc(data_met_370_giss,'Met_TS'),c(1,2),mean)
+t_delta_370 <- (t_370 - t_base)
+t_245 <- apply(var.get.nc(data_met_245_giss,'Met_TS'),c(1,2),mean)
+t_delta_245 <- (t_245 - t_base)
 t_585 <- apply(var.get.nc(data_met_585_giss,'Met_TS'),c(1,2),mean)
 t_delta_585 <- (t_585 - t_base)
 
@@ -74,6 +92,18 @@ avgw_delta_585 <- (avgw_585 - avgw_base)
 
 #total precipitation (at surface), mm/day
 tprecip_base <- apply(var.get.nc(data_met_base_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_119 <- apply(var.get.nc(data_met_119_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_119 <- (tprecip_119 - tprecip_base)
+tprecip_126 <- apply(var.get.nc(data_met_126_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_126 <- (tprecip_126 - tprecip_base)
+tprecip_245 <- apply(var.get.nc(data_met_245_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_245 <- (tprecip_245 - tprecip_base)
+tprecip_370 <- apply(var.get.nc(data_met_370_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_370 <- (tprecip_370 - tprecip_base)
+tprecip_434 <- apply(var.get.nc(data_met_434_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_434 <- (tprecip_434 - tprecip_base)
+tprecip_460 <- apply(var.get.nc(data_met_460_giss,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_460 <- (tprecip_460 - tprecip_base)
 tprecip_585 <- apply(var.get.nc(data_met_585_giss,'Met_PRECTOT'),c(1,2),mean)
 tprecip_delta_585 <- (tprecip_585 - tprecip_base)
 
@@ -89,6 +119,12 @@ mask_world <- MaskLand(df_met_giss$lon,df_met_giss$lat,mask='world')
 mask_usa <- MaskLand(df_met_giss$lon,df_met_giss$lat,mask='usa')
 
 df_met_giss$delta585_pblh <- as.vector(pblh_delta_585)
+df_met_giss$delta119_temp <- as.vector(t_delta_119)
+df_met_giss$delta126_temp <- as.vector(t_delta_126)
+df_met_giss$delta245_temp <- as.vector(t_delta_245)
+df_met_giss$delta370_temp <- as.vector(t_delta_370)
+df_met_giss$delta434_temp <- as.vector(t_delta_434)
+df_met_giss$delta460_temp <- as.vector(t_delta_460)
 df_met_giss$delta585_temp <- as.vector(t_delta_585)
 df_met_giss$delta585_v <- as.vector(v_delta_585)
 df_met_giss$delta585_u <- as.vector(u_delta_585)
@@ -96,11 +132,23 @@ df_met_giss$delta585_cldfrac <- as.vector(cldfrac_delta_585)
 df_met_giss$delta585_aprecip <- as.vector(aprecip_delta_585)
 df_met_giss$delta585_cprecip <- as.vector(cprecip_delta_585)
 df_met_giss$delta585_avgw <- as.vector(avgw_delta_585)
+df_met_giss$delta119_tprecip <- as.vector(tprecip_delta_119)
+df_met_giss$delta126_tprecip <- as.vector(tprecip_delta_126)
+df_met_giss$delta245_tprecip <- as.vector(tprecip_delta_245)
+df_met_giss$delta370_tprecip <- as.vector(tprecip_delta_370)
+df_met_giss$delta434_tprecip <- as.vector(tprecip_delta_434)
+df_met_giss$delta460_tprecip <- as.vector(tprecip_delta_460)
 df_met_giss$delta585_tprecip <- as.vector(tprecip_delta_585)
 
 #filter for areas over land
 df_met_world_giss <- df_met_giss %>% 
   mutate(delta585_pblh = case_when(mask_world == TRUE ~ delta585_pblh, TRUE ~ NA),
+         delta119_temp = case_when(mask_world == TRUE ~ delta119_temp, TRUE ~ NA),
+         delta126_temp = case_when(mask_world == TRUE ~ delta126_temp, TRUE ~ NA),
+         delta245_temp = case_when(mask_world == TRUE ~ delta245_temp, TRUE ~ NA),
+         delta370_temp = case_when(mask_world == TRUE ~ delta370_temp, TRUE ~ NA),
+         delta434_temp = case_when(mask_world == TRUE ~ delta434_temp, TRUE ~ NA),
+         delta460_temp = case_when(mask_world == TRUE ~ delta460_temp, TRUE ~ NA),
          delta585_temp = case_when(mask_world == TRUE ~ delta585_temp, TRUE ~ NA),
          delta585_v = case_when(mask_world == TRUE ~ delta585_v, TRUE ~ NA),
          delta585_u = case_when(mask_world == TRUE ~ delta585_u, TRUE ~ NA),
@@ -108,11 +156,23 @@ df_met_world_giss <- df_met_giss %>%
          delta585_aprecip = case_when(mask_world == TRUE ~ delta585_aprecip, TRUE ~ NA),
          delta585_cprecip = case_when(mask_world == TRUE ~ delta585_cprecip, TRUE ~ NA),
          delta585_avgw = case_when(mask_world == TRUE ~ delta585_avgw, TRUE ~ NA),
+         delta119_tprecip = case_when(mask_world == TRUE ~ delta119_tprecip, TRUE ~ NA),
+         delta126_tprecip = case_when(mask_world == TRUE ~ delta126_tprecip, TRUE ~ NA),
+         delta245_tprecip = case_when(mask_world == TRUE ~ delta245_tprecip, TRUE ~ NA),
+         delta370_tprecip = case_when(mask_world == TRUE ~ delta370_tprecip, TRUE ~ NA),
+         delta434_tprecip = case_when(mask_world == TRUE ~ delta434_tprecip, TRUE ~ NA),
+         delta460_tprecip = case_when(mask_world == TRUE ~ delta460_tprecip, TRUE ~ NA),
          delta585_tprecip = case_when(mask_world == TRUE ~ delta585_tprecip, TRUE ~ NA),
          lon = case_when(lon > 180 ~ lon - 360, TRUE ~ lon))
 
 df_met_usa_giss <- df_met_giss %>% 
   mutate(delta585_pblh = case_when(mask_usa == TRUE ~ delta585_pblh, TRUE ~ NA),
+         delta119_temp = case_when(mask_usa == TRUE ~ delta119_temp, TRUE ~ NA),
+         delta126_temp = case_when(mask_usa == TRUE ~ delta126_temp, TRUE ~ NA),
+         delta245_temp = case_when(mask_usa == TRUE ~ delta245_temp, TRUE ~ NA),
+         delta370_temp = case_when(mask_usa == TRUE ~ delta370_temp, TRUE ~ NA),
+         delta434_temp = case_when(mask_usa == TRUE ~ delta434_temp, TRUE ~ NA),
+         delta460_temp = case_when(mask_usa == TRUE ~ delta460_temp, TRUE ~ NA),
          delta585_temp = case_when(mask_usa == TRUE ~ delta585_temp, TRUE ~ NA),
          delta585_v = case_when(mask_usa == TRUE ~ delta585_v, TRUE ~ NA),
          delta585_u = case_when(mask_usa == TRUE ~ delta585_u, TRUE ~ NA),
@@ -120,6 +180,12 @@ df_met_usa_giss <- df_met_giss %>%
          delta585_aprecip = case_when(mask_usa == TRUE ~ delta585_aprecip, TRUE ~ NA),
          delta585_cprecip = case_when(mask_usa == TRUE ~ delta585_cprecip, TRUE ~ NA),
          delta585_avgw = case_when(mask_usa == TRUE ~ delta585_avgw, TRUE ~ NA),
+         delta119_tprecip = case_when(mask_usa == TRUE ~ delta119_tprecip, TRUE ~ NA),
+         delta126_tprecip = case_when(mask_usa == TRUE ~ delta126_tprecip, TRUE ~ NA),
+         delta245_tprecip = case_when(mask_usa == TRUE ~ delta245_tprecip, TRUE ~ NA),
+         delta434_tprecip = case_when(mask_usa == TRUE ~ delta434_tprecip, TRUE ~ NA),
+         delta460_tprecip = case_when(mask_usa == TRUE ~ delta460_tprecip, TRUE ~ NA),
+         delta370_tprecip = case_when(mask_usa == TRUE ~ delta370_tprecip, TRUE ~ NA),
          delta585_tprecip = case_when(mask_usa == TRUE ~ delta585_tprecip, TRUE ~ NA),
          lon = case_when(lon > 180 ~ lon - 360, TRUE ~ lon))
 
@@ -128,51 +194,89 @@ df_met_usa_giss <- df_met_giss %>%
 ### CESM
 ```{r cesm_met_data}
 data_met_base_cesm <- open.nc(file.path('data','CESM','GEOSChem.CESM2.StateMet.base.ymonmean.nc4'))
+data_met_126_cesm <- open.nc(file.path('data','CESM','GEOSChem.CESM2.StateMet.clim126.2090s.ymonmean.nc4'))
+data_met_245_cesm <- open.nc(file.path('data','CESM','GEOSChem.CESM2.StateMet.clim245.2090s.ymonmean.nc4'))
 data_met_585_cesm <- open.nc(file.path('data','CESM','GEOSChem.CESM2.StateMet.clim585.2090s.ymonmean.nc4'))
 
 
 #PBL height
 pblh_base <- apply(var.get.nc(data_met_base_cesm,'Met_PBLH'),c(1,2),mean)
+pblh_126 <- apply(var.get.nc(data_met_126_cesm,'Met_PBLH'),c(1,2),mean)
+pblh_delta_126 <- (pblh_126 - pblh_base)
+pblh_245 <- apply(var.get.nc(data_met_245_cesm,'Met_PBLH'),c(1,2),mean)
+pblh_delta_245 <- (pblh_245 - pblh_base)
 pblh_585 <- apply(var.get.nc(data_met_585_cesm,'Met_PBLH'),c(1,2),mean)
 pblh_delta_585 <- (pblh_585 - pblh_base)
 
 # surface temperature (K)
 t_base <- apply(var.get.nc(data_met_base_cesm,'Met_TS'),c(1,2),mean)
+t_126 <- apply(var.get.nc(data_met_126_cesm,'Met_TS'),c(1,2),mean)
+t_delta_126 <- (t_126 - t_base)
+t_245 <- apply(var.get.nc(data_met_245_cesm,'Met_TS'),c(1,2),mean)
+t_delta_245 <- (t_245 - t_base)
 t_585 <- apply(var.get.nc(data_met_585_cesm,'Met_TS'),c(1,2),mean)
 t_delta_585 <- (t_585 - t_base)
 
 #N-S wind component
 v_base <- apply(var.get.nc(data_met_base_cesm,'Met_V'),c(1,2),mean)
+v_126 <- apply(var.get.nc(data_met_126_cesm,'Met_V'),c(1,2),mean)
+v_delta_126 <- (v_126 - v_base)
+v_245 <- apply(var.get.nc(data_met_245_cesm,'Met_V'),c(1,2),mean)
+v_delta_245 <- (v_245 - v_base)
 v_585 <- apply(var.get.nc(data_met_585_cesm,'Met_V'),c(1,2),mean)
 v_delta_585 <- (v_585 - v_base)
 
 #E-W wind component
 u_base <- apply(var.get.nc(data_met_base_cesm,'Met_U'),c(1,2),mean)
+u_126 <- apply(var.get.nc(data_met_126_cesm,'Met_U'),c(1,2),mean)
+u_delta_126 <- (u_126 - u_base)
+u_245 <- apply(var.get.nc(data_met_245_cesm,'Met_U'),c(1,2),mean)
+u_delta_245 <- (u_245 - u_base)
 u_585 <- apply(var.get.nc(data_met_585_cesm,'Met_U'),c(1,2),mean)
 u_delta_585 <- (u_585 - u_base)
 
 #column cloud frac
 cldfrac_base <- apply(var.get.nc(data_met_base_cesm,'Met_CLDFRC'),c(1,2),mean)
+cldfrac_126 <- apply(var.get.nc(data_met_126_cesm,'Met_CLDFRC'),c(1,2),mean)
+cldfrac_delta_126 <- (cldfrac_126 - cldfrac_base)
+cldfrac_245 <- apply(var.get.nc(data_met_245_cesm,'Met_CLDFRC'),c(1,2),mean)
+cldfrac_delta_245 <- (cldfrac_245 - cldfrac_base)
 cldfrac_585 <- apply(var.get.nc(data_met_585_cesm,'Met_CLDFRC'),c(1,2),mean)
 cldfrac_delta_585 <- (cldfrac_585 - cldfrac_base)
 
 #anvil precipitation (at surface), mm/day
 aprecip_base <- apply(var.get.nc(data_met_base_cesm,'Met_PRECANV'),c(1,2),mean)
+aprecip_126 <- apply(var.get.nc(data_met_126_cesm,'Met_PRECANV'),c(1,2),mean)
+aprecip_delta_126 <- (aprecip_126 - aprecip_base)
+aprecip_245 <- apply(var.get.nc(data_met_245_cesm,'Met_PRECANV'),c(1,2),mean)
+aprecip_delta_245 <- (aprecip_245 - aprecip_base)
 aprecip_585 <- apply(var.get.nc(data_met_585_cesm,'Met_PRECANV'),c(1,2),mean)
 aprecip_delta_585 <- (aprecip_585 - aprecip_base)
 
 #convective precipitation (at surface), mm/day
 cprecip_base <- apply(var.get.nc(data_met_base_cesm,'Met_PRECCON'),c(1,2),mean)
+cprecip_126 <- apply(var.get.nc(data_met_126_cesm,'Met_PRECCON'),c(1,2),mean)
+cprecip_delta_126 <- (cprecip_126 - cprecip_base)
+cprecip_245 <- apply(var.get.nc(data_met_245_cesm,'Met_PRECCON'),c(1,2),mean)
+cprecip_delta_245 <- (cprecip_245 - cprecip_base)
 cprecip_585 <- apply(var.get.nc(data_met_585_cesm,'Met_PRECCON'),c(1,2),mean)
 cprecip_delta_585 <- (cprecip_585 - cprecip_base)
 
 #water vapor mixing ratio
 avgw_base <- apply(var.get.nc(data_met_base_cesm,'Met_AVGW'),c(1,2),mean)
+avgw_126 <- apply(var.get.nc(data_met_126_cesm,'Met_AVGW'),c(1,2),mean)
+avgw_delta_126 <- (avgw_126 - avgw_base)
+avgw_245 <- apply(var.get.nc(data_met_245_cesm,'Met_AVGW'),c(1,2),mean)
+avgw_delta_245 <- (avgw_245 - avgw_base)
 avgw_585 <- apply(var.get.nc(data_met_585_cesm,'Met_AVGW'),c(1,2),mean)
 avgw_delta_585 <- (avgw_585 - avgw_base)
 
 #total precipitation (at surface), mm/day
 tprecip_base <- apply(var.get.nc(data_met_base_cesm,'Met_PRECTOT'),c(1,2),mean)
+tprecip_126 <- apply(var.get.nc(data_met_126_cesm,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_126 <- (tprecip_126 - tprecip_base)
+tprecip_245 <- apply(var.get.nc(data_met_245_cesm,'Met_PRECTOT'),c(1,2),mean)
+tprecip_delta_245 <- (tprecip_245 - tprecip_base)
 tprecip_585 <- apply(var.get.nc(data_met_585_cesm,'Met_PRECTOT'),c(1,2),mean)
 tprecip_delta_585 <- (tprecip_585 - tprecip_base)
 
@@ -187,6 +291,26 @@ mask_world <- MaskLand(df_met_cesm$lon,df_met_cesm$lat,mask='world')
 #sf_use_s2(FALSE)
 mask_usa <- MaskLand(df_met_cesm$lon,df_met_cesm$lat,mask='usa')
 
+df_met_cesm$delta126_pblh <- as.vector(pblh_delta_126)
+df_met_cesm$delta126_temp <- as.vector(t_delta_126)
+df_met_cesm$delta126_v <- as.vector(v_delta_126)
+df_met_cesm$delta126_u <- as.vector(u_delta_126)
+df_met_cesm$delta126_cldfrac <- as.vector(cldfrac_delta_126)
+df_met_cesm$delta126_aprecip <- as.vector(aprecip_delta_126)
+df_met_cesm$delta126_cprecip <- as.vector(cprecip_delta_126)
+df_met_cesm$delta126_avgw <- as.vector(avgw_delta_126)
+df_met_cesm$delta126_tprecip <- as.vector(tprecip_delta_126)
+
+df_met_cesm$delta245_pblh <- as.vector(pblh_delta_245)
+df_met_cesm$delta245_temp <- as.vector(t_delta_245)
+df_met_cesm$delta245_v <- as.vector(v_delta_245)
+df_met_cesm$delta245_u <- as.vector(u_delta_245)
+df_met_cesm$delta245_cldfrac <- as.vector(cldfrac_delta_245)
+df_met_cesm$delta245_aprecip <- as.vector(aprecip_delta_245)
+df_met_cesm$delta245_cprecip <- as.vector(cprecip_delta_245)
+df_met_cesm$delta245_avgw <- as.vector(avgw_delta_245)
+df_met_cesm$delta245_tprecip <- as.vector(tprecip_delta_245)
+
 df_met_cesm$delta585_pblh <- as.vector(pblh_delta_585)
 df_met_cesm$delta585_temp <- as.vector(t_delta_585)
 df_met_cesm$delta585_v <- as.vector(v_delta_585)
@@ -199,7 +323,25 @@ df_met_cesm$delta585_tprecip <- as.vector(tprecip_delta_585)
 
 #filter for areas over land
 df_met_world_cesm <- df_met_cesm %>% 
-  mutate(delta585_pblh = case_when(mask_world == TRUE ~ delta585_pblh, TRUE ~ NA),
+  mutate(delta126_pblh = case_when(mask_world == TRUE ~ delta126_pblh, TRUE ~ NA),
+         delta126_temp = case_when(mask_world == TRUE ~ delta126_temp, TRUE ~ NA),
+         delta126_v = case_when(mask_world == TRUE ~ delta126_v, TRUE ~ NA),
+         delta126_u = case_when(mask_world == TRUE ~ delta126_u, TRUE ~ NA),
+         delta126_cldfrac = case_when(mask_world == TRUE ~ delta126_cldfrac, TRUE ~ NA),
+         delta126_aprecip = case_when(mask_world == TRUE ~ delta126_aprecip, TRUE ~ NA),
+         delta126_cprecip = case_when(mask_world == TRUE ~ delta126_cprecip, TRUE ~ NA),
+         delta126_avgw = case_when(mask_world == TRUE ~ delta126_avgw, TRUE ~ NA),
+         delta126_tprecip = case_when(mask_world == TRUE ~ delta126_tprecip, TRUE ~ NA),
+         delta245_pblh = case_when(mask_world == TRUE ~ delta245_pblh, TRUE ~ NA),
+         delta245_temp = case_when(mask_world == TRUE ~ delta245_temp, TRUE ~ NA),
+         delta245_v = case_when(mask_world == TRUE ~ delta245_v, TRUE ~ NA),
+         delta245_u = case_when(mask_world == TRUE ~ delta245_u, TRUE ~ NA),
+         delta245_cldfrac = case_when(mask_world == TRUE ~ delta245_cldfrac, TRUE ~ NA),
+         delta245_aprecip = case_when(mask_world == TRUE ~ delta245_aprecip, TRUE ~ NA),
+         delta245_cprecip = case_when(mask_world == TRUE ~ delta245_cprecip, TRUE ~ NA),
+         delta245_avgw = case_when(mask_world == TRUE ~ delta245_avgw, TRUE ~ NA),
+         delta245_tprecip = case_when(mask_world == TRUE ~ delta245_tprecip, TRUE ~ NA),
+         delta585_pblh = case_when(mask_world == TRUE ~ delta585_pblh, TRUE ~ NA),
          delta585_temp = case_when(mask_world == TRUE ~ delta585_temp, TRUE ~ NA),
          delta585_v = case_when(mask_world == TRUE ~ delta585_v, TRUE ~ NA),
          delta585_u = case_when(mask_world == TRUE ~ delta585_u, TRUE ~ NA),
@@ -211,7 +353,25 @@ df_met_world_cesm <- df_met_cesm %>%
          lon = case_when(lon > 180 ~ lon - 360, TRUE ~ lon))
 
 df_met_usa_cesm <- df_met_cesm %>% 
-  mutate(delta585_pblh = case_when(mask_usa == TRUE ~ delta585_pblh, TRUE ~ NA),
+  mutate(delta126_pblh = case_when(mask_usa == TRUE ~ delta126_pblh, TRUE ~ NA),
+         delta126_temp = case_when(mask_usa == TRUE ~ delta126_temp, TRUE ~ NA),
+         delta126_v = case_when(mask_usa == TRUE ~ delta126_v, TRUE ~ NA),
+         delta126_u = case_when(mask_usa == TRUE ~ delta126_u, TRUE ~ NA),
+         delta126_cldfrac = case_when(mask_usa == TRUE ~ delta126_cldfrac, TRUE ~ NA),
+         delta126_aprecip = case_when(mask_usa == TRUE ~ delta126_aprecip, TRUE ~ NA),
+         delta126_cprecip = case_when(mask_usa == TRUE ~ delta126_cprecip, TRUE ~ NA),
+         delta126_avgw = case_when(mask_usa == TRUE ~ delta126_avgw, TRUE ~ NA),
+         delta126_tprecip = case_when(mask_usa == TRUE ~ delta126_tprecip, TRUE ~ NA),
+         delta245_pblh = case_when(mask_usa == TRUE ~ delta245_pblh, TRUE ~ NA),
+         delta245_temp = case_when(mask_usa == TRUE ~ delta245_temp, TRUE ~ NA),
+         delta245_v = case_when(mask_usa == TRUE ~ delta245_v, TRUE ~ NA),
+         delta245_u = case_when(mask_usa == TRUE ~ delta245_u, TRUE ~ NA),
+         delta245_cldfrac = case_when(mask_usa == TRUE ~ delta245_cldfrac, TRUE ~ NA),
+         delta245_aprecip = case_when(mask_usa == TRUE ~ delta245_aprecip, TRUE ~ NA),
+         delta245_cprecip = case_when(mask_usa == TRUE ~ delta245_cprecip, TRUE ~ NA),
+         delta245_avgw = case_when(mask_usa == TRUE ~ delta245_avgw, TRUE ~ NA),
+         delta245_tprecip = case_when(mask_usa == TRUE ~ delta245_tprecip, TRUE ~ NA),
+         delta585_pblh = case_when(mask_usa == TRUE ~ delta585_pblh, TRUE ~ NA),
          delta585_temp = case_when(mask_usa == TRUE ~ delta585_temp, TRUE ~ NA),
          delta585_v = case_when(mask_usa == TRUE ~ delta585_v, TRUE ~ NA),
          delta585_u = case_when(mask_usa == TRUE ~ delta585_u, TRUE ~ NA),
@@ -259,15 +419,27 @@ mask_world <- MaskLand(df_ozone_cesm$lon,df_ozone_cesm$lat,mask='world')
 df_ozone_cesm$delta126_ozone <- as.vector(delta126_ozone)
 df_ozone_cesm$delta245_ozone <- as.vector(delta245_ozone)
 df_ozone_cesm$delta585_ozone <- as.vector(delta585_ozone)
+df_ozone_cesm$ozone_base_cesm <- as.vector(ozone_base_cesm)
+df_ozone_cesm$ozone_126_cesm <- as.vector(ozone_126_cesm)
+df_ozone_cesm$ozone_245_cesm <- as.vector(ozone_245_cesm)
+df_ozone_cesm$ozone_585_cesm <- as.vector(ozone_585_cesm)
 
 df_usa_ozone_cesm <- df_ozone_cesm %>% 
   mutate(delta126_ozone = case_when(mask_usa == TRUE ~ delta126_ozone, TRUE ~ NA),
          delta245_ozone = case_when(mask_usa == TRUE ~ delta245_ozone, TRUE ~ NA),
-         delta585_ozone = case_when(mask_usa == TRUE ~ delta585_ozone, TRUE ~ NA))
+         delta585_ozone = case_when(mask_usa == TRUE ~ delta585_ozone, TRUE ~ NA),
+         ozone_base_cesm = case_when(mask_usa == TRUE ~ ozone_base_cesm, TRUE ~ NA),
+         ozone_126_cesm = case_when(mask_usa == TRUE ~ ozone_126_cesm, TRUE ~ NA),
+         ozone_245_cesm = case_when(mask_usa == TRUE ~ ozone_245_cesm, TRUE ~ NA),
+         ozone_585_cesm = case_when(mask_usa == TRUE ~ ozone_585_cesm, TRUE ~ NA))
 df_world_ozone_cesm <- df_ozone_cesm %>% 
   mutate(delta126_ozone = case_when(mask_world == TRUE ~ delta126_ozone, TRUE ~ NA),
          delta245_ozone = case_when(mask_world == TRUE ~ delta245_ozone, TRUE ~ NA),
-         delta585_ozone = case_when(mask_world == TRUE ~ delta585_ozone, TRUE ~ NA))
+         delta585_ozone = case_when(mask_world == TRUE ~ delta585_ozone, TRUE ~ NA),
+         ozone_base_cesm = case_when(mask_world == TRUE ~ ozone_base_cesm, TRUE ~ NA),
+         ozone_126_cesm = case_when(mask_world == TRUE ~ ozone_126_cesm, TRUE ~ NA),
+         ozone_245_cesm = case_when(mask_world == TRUE ~ ozone_245_cesm, TRUE ~ NA),
+         ozone_585_cesm = case_when(mask_world == TRUE ~ ozone_585_cesm, TRUE ~ NA))
 ```
 # Emissions
 
@@ -285,6 +457,28 @@ data_emi_370_giss <- open.nc(file.path(base_path,'Model_Data','HEMCO.E21.clim370
 data_emi_434_giss <- open.nc(file.path(base_path,'Model_Data','HEMCO.E21.clim434.2090s.ymonmean.nc4'))
 data_emi_460_giss <- open.nc(file.path(base_path,'Model_Data','HEMCO.E21.clim460.2090s.ymonmean.nc4'))
 data_emi_585_giss <- open.nc(file.path(base_path,'Model_Data','HEMCO.E21.clim585.2090s.ymonmean.nc4'))
+
+
+emi_anh3_base <- (1e-9*var.get.nc(data_emi_base_giss,'AREA')*31536000/12)*(
+  apply(var.get.nc(data_emi_base_giss,'EmisNH3_Ship'),c(1,2),sum))
+
+#NMVOCs
+# SOAP
+# MOH?
+# C2H6
+#C3H8
+#ALK4
+# C2H4
+#PRPE
+#C2H2
+#BENZ
+#TOLU
+#XYLE
+#CH2O
+#ALD2
+#MEK
+#HCOOH
+
 ```
 
 ### CESM
@@ -336,6 +530,19 @@ emi_snox_base <- (1e-9*var.get.nc(data_emi_base_cesm,'AREA')*31536000/1)*(
   (1*14)/30* var.get.nc(data_emi_base_cesm, 'EmisNO_Soil')
 )
 
+emi_aso2_base <- (1e-9*var.get.nc(data_emi_base_cesm,'AREA')*31536000/1)*(
+  var.get.nc(data_emi_base_cesm,'EmisSO2_Anthro'))
+emi_anh3_base <- (1e-9*var.get.nc(data_emi_base_cesm,'AREA')*31536000/1)*(
+  var.get.nc(data_emi_base_cesm,'EmisNH3_Anthro'))
+emi_aNOx_base <- (1e-9*var.get.nc(data_emi_base_cesm,'AREA')*31536000/1)*(
+  var.get.nc(data_emi_base_cesm,'EmisNO_Anthro'))
+emi_acarbon_base <- (1e-9*var.get.nc(data_emi_base_cesm,'AREA')*31536000/1)*(
+  var.get.nc(data_emi_base_cesm,'EmisBCPO_Anthro')+
+    var.get.nc(data_emi_base_cesm,'EmisBCPI_Anthro')+
+    var.get.nc(data_emi_base_cesm,'EmisOCPI_Anthro')+
+    var.get.nc(data_emi_base_cesm,'EmisOCPO_Anthro')) #+POG1 and POG2?
+emi_aco_base <- (1e-9*var.get.nc(data_emi_base_cesm,'AREA')*31536000/1)*(
+  var.get.nc(data_emi_base_cesm,'EmisCO_Anthro'))
 
 emi_bio_585 <- (1e-9*var.get.nc(data_emi_585_cesm,'AREA')*31536000/1)*(
   (3*12)/58.08*var.get.nc(data_emi_base_cesm,'EmisACET_Biogenic')+
@@ -373,6 +580,7 @@ emi_snox_585 <- (1e-9*var.get.nc(data_emi_585_cesm,'AREA')*31536000/1)*(
 )
 
 delta585_emi <- (emi_bio_585-emi_bio_base)#/emi_bio_base
+
 delta585_lnox_emi <- (emi_lnox_585-emi_lnox_base)#/emi_lnox_base
 delta585_snox_emi <- (emi_snox_585-emi_snox_base)#/emi_snox_base
 
@@ -455,6 +663,19 @@ df_world_ddep_cesm <- df_dd_cesm %>%
          delta585_drydep = case_when(mask_world == TRUE ~ delta585_drydep, TRUE ~ NA))
         # delta585_lnox_emi = case_when(mask_world == TRUE ~ delta585_lnox_emi, TRUE ~ NA),
         # delta585_snox_emi = case_when(mask_world == TRUE ~ delta585_snox_emi, TRUE ~ NA))
+```
+
+### Wet Dep - CESM
+
+```{r wetdep}
+
+#ozone is not lost via wet deposition (only dry)
+
+data_wetdep_base_cesm <- open.nc(file.path('data','CESM','GC.CESM2.WetLossLS.base.nc'))
+data_wetdep_126_cesm <- open.nc(file.path('data','CESM','GC.CESM2.DryDep.clim126.nc'))
+data_wetdep_245_cesm <- open.nc(file.path('data','CESM','GC.CESM2.DryDep.clim245.nc'))
+data_wetdep_585_cesm <- open.nc(file.path('data','CESM','GC.CESM2.DryDep.clim585.nc'))
+
 ```
 
 
@@ -587,10 +808,10 @@ fragment_join <- st_drop_geometry(left_join(full_pop_join, grid_join, by=c("ROW"
 ### Maps
 
 ```{r plot_maps, echo=FALSE}
-input_df <- df_world_emi_cesm
-variable <- input_df$delta585_emi
-#input_df <- df_met_world_cesm
-#variable <- input_df$delta585_temp
+input_df <- df_world_ozone_cesm
+variable <- input_df$delta585_ozone
+#input_df <- df_met_usa_cesm
+#variable <- input_df$delta585_cldfrac
 #input_df <- df_world_ddep_cesm
 #variable <- input_df$delta585_drydep
 #input_df <- df_world_ozone_cesm
@@ -638,4 +859,85 @@ ggscatter(input_df, x=var1,y=var2,
           conf.int = TRUE) + stat_cor(method = 'pearson')+
   geom_hline(yintercept = 0, color = 'black', linetype = 'dashed', linewidth=1)+
   geom_vline(xintercept = 0, color = 'black', linetype = 'dashed', linewidth=1)#+
+```
+
+### concentrations figures
+
+``` {r conc_figs}
+path_iec <- 'C:/Users/EMCDUF01/Industrial Economics, Inc/IEc EPA CSIB Share - IEc EPA CSIB Share/03_Global_AQ_Study/Data/GCAP2-CESM2_Raw Data'
+
+#regridded to be 2x2.5 degrees (to match the met diagnostics)
+# data used for mortality calculations are at 0.5x0.5 degrees
+data_ozone_base_cesm <- open.nc(file.path(path_iec,'GCAP2-CESM2','OSDMA8.base.nc'))
+data_ozone_126_cesm <- open.nc(file.path(path_iec,'GCAP2-CESM2','OSDMA8.clim126.2090s.nc'))
+data_ozone_245_cesm <- open.nc(file.path(path_iec,'GCAP2-CESM2','OSDMA8.clim245.2090s.nc'))
+data_ozone_585_cesm <- open.nc(file.path(path_iec,'GCAP2-CESM2','OSDMA8.clim585.2090s.nc'))
+
+ozone_base_cesm <- raster(file.path(path_iec,'GCAP2-CESM2','OSDMA8.base.nc'),var = 'MDA8')
+ozone_126_cesm <- raster(file.path(path_iec,'GCAP2-CESM2','OSDMA8.clim126.2090s.nc'),var = 'MDA8')
+#ozone_245_cesm <- raster(file.path(path_iec,'GCAP2-CESM2','OSDMA8.clim245.2090s.nc'),var = 'MDA8')
+#ozone_585_cesm <- raster(file.path(path_iec,'GCAP2-CESM2','OSDMA8.clim585.2090s.nc'),var = 'MDA8')
+
+ozone_base_cesm <- var.get.nc(data_ozone_base_cesm,'MDA8')
+ozone_126_cesm <- var.get.nc(data_ozone_126_cesm,'MDA8')
+ozone_245_cesm <- var.get.nc(data_ozone_245_cesm,'MDA8')
+ozone_585_cesm <- var.get.nc(data_ozone_585_cesm,'MDA8')
+
+delta126_ozone <-  (ozone_126_cesm-ozone_base_cesm)#/ozone_base_cesm
+delta245_ozone <-  (ozone_245_cesm-ozone_base_cesm)#/ozone_base_cesm
+delta585_ozone <-  (ozone_585_cesm-ozone_base_cesm)#/ozone_base_cesm
+
+CRS =  4326
+delta126_ozone <- rasterToPoints(delta126_ozone, spatial = T) %>%
+st_as_sf(delta126_ozone) %>% 
+  st_transform(., CRS)
+#delta126_ozone <- delta126_ozone %>% st_transform(.,CRS)
+
+lon <- var.get.nc(data_ozone_base_cesm,'lon')
+lat <- var.get.nc(data_ozone_base_cesm,'lat')
+df_ozone_cesm <- expand.grid(lon=lon, lat=lat)
+#mask_usa <- MaskLand(df_ozone_cesm$lon,df_ozone_cesm$lat,mask='usa')
+#mask_world <- MaskLand(df_ozone_cesm$lon,df_ozone_cesm$lat,mask='world')
+
+### Format / Make stacked bar chart for the US
+df_ozone_cesm$delta126_ozone <- as.vector(delta126_ozone)
+df_ozone_cesm$delta245_ozone <- as.vector(delta245_ozone)
+df_ozone_cesm$delta585_ozone <- as.vector(delta585_ozone)
+df_ozone_cesm$ozone_base_cesm <- as.vector(ozone_base_cesm)
+df_ozone_cesm$ozone_126_cesm <- as.vector(ozone_126_cesm)
+df_ozone_cesm$ozone_245_cesm <- as.vector(ozone_245_cesm)
+df_ozone_cesm$ozone_585_cesm <- as.vector(ozone_585_cesm)
+
+# df_usa_ozone_cesm <- df_ozone_cesm %>% 
+#   mutate(delta126_ozone = case_when(mask_usa == TRUE ~ delta126_ozone, TRUE ~ NA),
+#          delta245_ozone = case_when(mask_usa == TRUE ~ delta245_ozone, TRUE ~ NA),
+#          delta585_ozone = case_when(mask_usa == TRUE ~ delta585_ozone, TRUE ~ NA),
+#          ozone_base_cesm = case_when(mask_usa == TRUE ~ ozone_base_cesm, TRUE ~ NA),
+#          ozone_126_cesm = case_when(mask_usa == TRUE ~ ozone_126_cesm, TRUE ~ NA),
+#          ozone_245_cesm = case_when(mask_usa == TRUE ~ ozone_245_cesm, TRUE ~ NA),
+#          ozone_585_cesm = case_when(mask_usa == TRUE ~ ozone_585_cesm, TRUE ~ NA))
+# df_world_ozone_cesm <- df_ozone_cesm %>% 
+#   mutate(delta126_ozone = case_when(mask_world == TRUE ~ delta126_ozone, TRUE ~ NA),
+#          delta245_ozone = case_when(mask_world == TRUE ~ delta245_ozone, TRUE ~ NA),
+#          delta585_ozone = case_when(mask_world == TRUE ~ delta585_ozone, TRUE ~ NA),
+#          ozone_base_cesm = case_when(mask_usa == TRUE ~ ozone_base_cesm, TRUE ~ NA),
+#          ozone_126_cesm = case_when(mask_usa == TRUE ~ ozone_126_cesm, TRUE ~ NA),
+#          ozone_245_cesm = case_when(mask_usa == TRUE ~ ozone_245_cesm, TRUE ~ NA),
+#          ozone_585_cesm = case_when(mask_usa == TRUE ~ ozone_585_cesm, TRUE ~ NA))
+
+df<- df_ozone_cesm %>% 
+  mutate(lon = case_when(lon > 180 ~ lon - 360, TRUE ~ lon))
+
+#plot(delta126_ozone)
+
+ggplot() +
+  geom_sf(data = delta126_ozone)
+
+ggplot(df_ozone_cesm,aes(x=lon,y=lat,fill=delta126_ozone))+
+  geom_tile()+
+  scale_fill_gradient2(low = 'darkgreen', mid = 'white', high = 'red', midpoint = 0, 
+                       limits = c(min(df$delta245_ozone),max(df$delta245_ozone))) +
+  geom_polygon(data = map_data('world'), aes(x = long, y = lat, group = group),
+               color = 'black', fill = NA) +
+  coord_map('mollweide')
 ```
