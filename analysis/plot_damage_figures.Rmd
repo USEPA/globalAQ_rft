@@ -1,0 +1,776 @@
+---
+title: "Plot_Damage_Figures (for global air quality paper)"
+author: "E. McDuffie"
+date: "2025-03-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "~/CCD-CSIB/GitHub/Code/globalAQ_rft")
+```
+
+# Load libraries
+```{r libraries, include = FALSE}
+library('tidyverse')
+library('reshape2')
+require('patchwork')
+require('RColorBrewer')
+#library('maps')
+#library('mapproj')
+library('arrow')
+require('readxl')
+library('zoo')
+library(sf)
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(RNetCDF) #to read in netCDFs
+library(metR) #to create the landmasks
+```
+
+# Figure 3 (ozone)
+global maps of respiratory mortality (per capita?) (from ssp245)
+
+```{r, countrymap_percapita}
+
+Plots <- file.path(getwd(),'figures')
+input <- file.path(getwd(),'data')
+
+countryResults <- read.csv(file.path(input,"result_summary_by_country.csv"))
+print(countryResults)
+summary_ozone <- countryResults %>%
+  filter(scenario == 245,
+         pollutant == 'Ozone',
+         year==2095) %>%
+  group_by(column) %>%
+  summarise_at(.vars = c('per_capita','incidence'), mean)
+  
+print(summary_ozone)
+
+Ctry.Name<-read.csv(file.path(input,'Final Country Grid Col_Row Index.csv'))
+
+country_ozone_plot <- Ctry.Name %>% left_join(summary_ozone, by = c('COL'='column')) %>%
+  filter(!is.na(per_capita))
+
+print(country_ozone_plot)
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Cote d'Ivoire"] <- "Côte d'Ivoire"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Congo DRC"] <- "Democratic Republic of the Congo"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Congo"] <- "Republic of Congo"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Cabo Verde"] <- "Cape Verde"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Gambia"] <- "The Gambia"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "China, Hong Kong SAR"] <- "Hong Kong"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "South Korea"] <- "Republic of Korea"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Laos"] <- "Lao PDR"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "China, Macao SAR"] <- "Macao" 
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Sao Tome and Principe"] <- "	São Tomé and Principe"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "North Korea"] <- "Dem. Rep. Korea"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Palestinian Territory"] <- "Palestine"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "Eswatini"] <- "Swaziland"
+country_ozone_plot["COUNTRY"][country_ozone_plot["COUNTRY"] == "China, Taiwan Province of China"] <- "Taiwan"
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+world <- world %>% 
+  filter(sov_a3 != 'ATA') #%>% #remove antarctica
+MergedData <- left_join(world, country_ozone_plot, by = c('name_long'='COUNTRY'))
+
+limit <- max(abs(MergedData$per_capita)) * c(-1,1)
+myColors <-
+  c(rev(brewer.pal(9, "YlOrRd"))
+    , "white"
+    , brewer.pal(9, "Blues"))
+
+p5 <- ggplot() +
+  geom_sf(data = MergedData, 
+          color = "black",  aes(fill = per_capita))+
+  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 
+           +datum=WGS84 +units=m +no_defs")+
+  scale_fill_gradient2("\u0394 Deaths Per Capita",
+                       n.breaks=8,
+                       low = 'blue',
+                       high='darkred',
+                       mid = 'white',
+                       limits = limit,
+                       labels = c('','Minimum','0','','','','','Maximum',''))+
+                       # colors = c('blue','white','red'))+
+  
+  #scale_fill_fermenter("Deaths",
+                       #n.breaks=8,
+                       #type = 'div',
+                       #palette=myColors)+#,
+                       #direction = -1,
+                       #high = 'red',
+                       #low = 'blue',
+                       #mid = 'white',
+                       #midpoint=0,
+                       # palette = 'Spectral',#Spectral",
+                       # na.value='lightgray',
+                       #limits=limit,
+                         #c(#0,
+                                #min(MergedData$per_capita, na.rm=TRUE),
+                                #max(MergedData$per_capita)))+#,
+                       #labels = c('Minimum',rep('',5),'Maximum'))+
+  theme_bw()+
+  theme(legend.position = 'right')+
+  theme(legend.key.height = unit(0.5,'cm'),
+        legend.spacing.y = unit(.5,'cm'),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=13))+
+  theme(panel.border = element_rect(color = "gray"),
+        axis.text.x= element_blank(),
+        axis.ticks.x = element_blank())+
+  guides(col = guide_legend(override.aes = list(shape = 15, size = 10)))#+
+p5
+ggsave(plot = p5, filename = 
+         file.path(Plots,paste0('Fig3_map.png')),width = 6,height = 5)
+
+
+#make damage function plot
+#for top 10 contries
+print(countryResults)
+#top 9 countries in terms of ozone deaths
+country_list = c('Global','India','China','Pakistan','Bangladesh','United States', 'Indonesia','Nigeria','Mexico')
+
+p_list <- list()
+
+for (icountry in 1:length(country_list)) {
+  if (country_list[icountry] == 'Global'){
+    damage_data <- countryResults %>%
+    filter(pollutant=='Ozone',
+         year==2095) %>%
+      group_by_at(.vars= c('scenario','model','D_Warming')) %>%
+      summarise_at(.vars = c('per_capita','incidence','population'), sum) %>%
+      ungroup() %>%
+      #add the zero, zero point
+    add_row(model='GISS',incidence=0, scenario = 0,per_capita = 0, D_Warming=0,population=1) %>% 
+    add_row(model='NCAR',incidence=0, scenario = 0, per_capita = 0, D_Warming=0,population=1) %>%
+    mutate(scenario = paste0('SSP',scenario),
+         per_capita = incidence*1e5/population) #convert to deaths per capita per 100k
+  } else {
+damage_data <- countryResults %>%
+  filter(pollutant=='Ozone',
+         year==2095,
+         COUNTRY == country_list[icountry]) %>%
+  #add the zero, zero point
+  add_row(model='GISS',incidence=0, scenario = 0,per_capita = 0, D_Warming=0,population=1) %>% 
+  add_row(model='NCAR',incidence=0, scenario = 0, per_capita = 0, D_Warming=0,population=1) %>%
+  mutate(scenario = paste0('SSP',scenario),
+         per_capita = per_capita*1e5) #convert to deaths per capita per 100k
+}
+  
+p1 <- damage_data %>%
+  ggplot( aes(x=D_Warming,y=per_capita,group=model))+
+  geom_line(aes(linetype=model), color='black',size=1.5)+
+  geom_point(size=5, aes(color=factor(scenario)))+
+  geom_point(color='black', size=5, shape=1)+
+  scale_color_brewer(palette = 'Spectral', direction = -1)+
+  scale_y_continuous(label=scales::comma)+
+  theme_minimal()+
+  ylab("\u0394 Deaths (per 100K)")+
+  xlab("Degrees of Warming")+theme(legend.position = 'right')+
+  theme(legend.key.height = unit(0.5,'cm'),
+        legend.spacing.y = unit(.5,'cm'),
+        legend.text = element_text(size=16),
+        legend.title = element_text(size=16),
+        axis.text = element_text(size=16),
+        axis.title=element_text(size=16))+
+  labs(linetype= "GCM",color='SSP Scenario')+
+  ggtitle(country_list[icountry])+
+  theme(plot.title = element_text(size=20, face = 'bold'))
+p_list[[icountry]] <- p1
+ggsave(plot = p1, filename = 
+         file.path(Plots,paste0('Fig3_df_',country_list[icountry],'.png')),width = 6.5,height = 3)
+
+}
+
+p_list
+```
+
+# Figure 4 (PM)
+global maps of respiratory mortality (per capita?) (from ssp245) &
+damage functions for top countries
+
+```{r, countrymap_percapita}
+
+Plots <- file.path(getwd(),'figures')
+input <- file.path(getwd(),'data')
+
+countryResults <- read.csv(file.path(input,"result_summary_by_country.csv"))
+print(countryResults)
+summary_pm <- countryResults %>%
+  filter(scenario == 245,
+         pollutant == 'PM',
+         year==2095) %>%
+  group_by(column) %>%
+  summarise_at(.vars = c('per_capita','incidence'), mean)
+  
+print(summary_pm)
+
+Ctry.Name<-read.csv(file.path(input,'Final Country Grid Col_Row Index.csv'))
+
+country_pm_plot <- Ctry.Name %>% left_join(summary_pm, by = c('COL'='column')) %>%
+  filter(!is.na(per_capita))
+
+print(country_pm_plot)
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Cote d'Ivoire"] <- "Côte d'Ivoire"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Congo DRC"] <- "Democratic Republic of the Congo"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Congo"] <- "Republic of Congo"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Cabo Verde"] <- "Cape Verde"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Gambia"] <- "The Gambia"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "China, Hong Kong SAR"] <- "Hong Kong"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "South Korea"] <- "Republic of Korea"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Laos"] <- "Lao PDR"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "China, Macao SAR"] <- "Macao" 
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Sao Tome and Principe"] <- "	São Tomé and Principe"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "North Korea"] <- "Dem. Rep. Korea"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Palestinian Territory"] <- "Palestine"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "Eswatini"] <- "Swaziland"
+country_pm_plot["COUNTRY"][country_pm_plot["COUNTRY"] == "China, Taiwan Province of China"] <- "Taiwan"
+
+world <- ne_countries(scale = "medium", returnclass = "sf")
+world <- world %>% 
+  filter(sov_a3 != 'ATA') #%>% #remove antarctica
+MergedData <- left_join(world, country_pm_plot, by = c('name_long'='COUNTRY'))
+
+limit <- max(abs(MergedData$per_capita)) * c(-1,1)
+myColors <-
+  c(rev(brewer.pal(9, "YlOrRd"))
+    , "white"
+    , brewer.pal(9, "Blues"))
+
+p5 <- ggplot() +
+  geom_sf(data = MergedData, 
+          color = "black",  aes(fill = per_capita))+
+  coord_sf(crs = "+proj=robin +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 
+           +datum=WGS84 +units=m +no_defs")+
+  scale_fill_gradient2("\u0394 Deaths Per Capita",
+                       n.breaks=8,
+                       low = 'blue',
+                       high='darkred',
+                       mid = 'white',
+                       limits = limit,
+                       labels = c('Minimum','','','','','0','','Maximum'))+
+                       # colors = c('blue','white','red'))+
+  
+  #scale_fill_fermenter("Deaths",
+                       #n.breaks=8,
+                       #type = 'div',
+                       #palette=myColors)+#,
+                       #direction = -1,
+                       #high = 'red',
+                       #low = 'blue',
+                       #mid = 'white',
+                       #midpoint=0,
+                       # palette = 'Spectral',#Spectral",
+                       # na.value='lightgray',
+                       #limits=limit,
+                         #c(#0,
+                                #min(MergedData$per_capita, na.rm=TRUE),
+                                #max(MergedData$per_capita)))+#,
+                       #labels = c('Minimum',rep('',5),'Maximum'))+
+  theme_bw()+
+  theme(legend.position = 'right')+
+  theme(legend.key.height = unit(0.5,'cm'),
+        legend.spacing.y = unit(.5,'cm'),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=13))+
+  theme(panel.border = element_rect(color = "gray"),
+        axis.text.x= element_blank(),
+        axis.ticks.x = element_blank())+
+  guides(col = guide_legend(override.aes = list(shape = 15, size = 10)))#+
+p5
+ggsave(plot = p5, filename = 
+         file.path(Plots,paste0('Fig4_map.png')),width = 6,height = 5)
+
+
+#make damage function plot
+#for top 10 countries
+print(countryResults)
+#top 9 countries in terms of ozone deaths
+country_list = c('Global','India','China','Pakistan','Bangladesh','United States', 'Indonesia','Russian Federation','Germany')
+
+p_list <- list()
+
+for (icountry in 1:length(country_list)) {
+  if (country_list[icountry] == 'Global'){
+    damage_data <- countryResults %>%
+    filter(pollutant=='PM',
+         year==2095) %>%
+      group_by_at(.vars= c('scenario','model','D_Warming')) %>%
+      summarise_at(.vars = c('per_capita','incidence','population'), sum) %>%
+      ungroup() %>%
+      #add the zero, zero point
+    add_row(model='GISS',incidence=0, scenario = 0,per_capita = 0, D_Warming=0,population=1) %>% 
+    add_row(model='NCAR',incidence=0, scenario = 0, per_capita = 0, D_Warming=0,population=1) %>%
+    mutate(scenario = paste0('SSP',scenario),
+         per_capita = incidence*1e5/population) #convert to deaths per capita per 100k
+  } else {
+damage_data <- countryResults %>%
+  filter(pollutant=='PM',
+         year==2095,
+         COUNTRY == country_list[icountry]) %>%
+  #add the zero, zero point
+  add_row(model='GISS',incidence=0, scenario = 0,per_capita = 0, D_Warming=0,population=1) %>% 
+  add_row(model='NCAR',incidence=0, scenario = 0, per_capita = 0, D_Warming=0,population=1) %>%
+  mutate(scenario = paste0('SSP',scenario),
+         per_capita = per_capita*1e5) #convert to deaths per capita per 100k
+}
+  
+p1 <- damage_data %>%
+  ggplot( aes(x=D_Warming,y=per_capita,group=model))+
+  geom_line(aes(linetype=model), color='black',size=1.5)+
+  geom_point(size=5, aes(color=factor(scenario)))+
+  geom_point(color='black', size=5, shape=1)+
+  scale_color_brewer(palette = 'Spectral', direction = -1)+
+  scale_y_continuous(label=scales::comma)+
+  theme_minimal()+
+  ylab("\u0394 Deaths (per 100K)")+
+  xlab("Degrees of Warming")+theme(legend.position = 'right')+
+  theme(legend.key.height = unit(0.5,'cm'),
+        legend.spacing.y = unit(.5,'cm'),
+        legend.text = element_text(size=16),
+        legend.title = element_text(size=16),
+        axis.text = element_text(size=16),
+        axis.title=element_text(size=16))+
+  labs(linetype= "GCM",color='SSP Scenario')+
+  ggtitle(country_list[icountry])+
+  theme(plot.title = element_text(size=20, face = 'bold'))
+p_list[[icountry]] <- p1
+ggsave(plot = p1, filename = 
+         file.path(Plots,paste0('Fig4_df_',country_list[icountry],'.png')),width = 6.5,height = 3)
+
+}
+
+p_list
+```
+
+
+#Supp Figure
+plot trends of speciated PM2.5 components
+
+```{r, speciated_trends}
+
+base_path <- 'C:/Users/EMCDUF01/Industrial Economics, Inc/IEc EPA CSIB Share - IEc EPA CSIB Share/03_Global_AQ_Study/Data'
+
+#read in full grid
+full_grid <- st_drop_geometry(read_sf(file.path(base_path, 'Grids', 'GMA_05x05.shp')))
+full_grid$COL <- sprintf("%03d", full_grid$COL)
+full_grid$ROW <- sprintf("%03d", full_grid$ROW)
+full_grid$fragment_ID <- as.numeric(paste0(full_grid$COL, full_grid$ROW))
+full_grid <- full_grid[, !names(full_grid) %in% c("COL", "ROW")]
+#read in data where population is > 0
+fragment_grid <-read_sf(file.path(base_path, 'Grids','Final_Fragments_Countries_AQS.shp'))
+# set projections
+CRS =  4326
+full_grid <- st_transform(full_grid, CRS)
+fragment_grid <- st_transform(fragment_grid, CRS)
+#select desired columns
+fragment_grid <- subset(fragment_grid, select = c("ROW_1", "COL_1", "ROW", "COL", "geometry","Alpha_3_co"))
+# read in total population for these grids and merge with the fragment grid
+pop_data <- read.csv(file.path(base_path,'RFF Fragment Total Population.csv')) %>%
+  filter(Year == 2020) %>%
+  dplyr::select(-c(X))
+full_pop_join <- left_join(fragment_grid, pop_data, by=c("ROW" = "Row","COL"="Column"),multiple='all') %>%
+  replace(is.na(.),0)
+#now join the population grid with the full 0.5x0.5 grid
+fragment_join <- st_drop_geometry(left_join(full_pop_join, full_grid, by=c("ROW" = "fragment_ID")))
+
+
+
+
+
+data_aermass_base_giss <-open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'GEOSChem.E21.AerosolMass.base.ymonmean.nc4'))
+data_aermass_119_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim119.2090s.ymonmean.nc4'))
+data_aermass_126_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim126.2090s.ymonmean.nc4'))
+data_aermass_245_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim245.2090s.ymonmean.nc4'))
+data_aermass_370_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim370.2090s.ymonmean.nc4'))
+data_aermass_434_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim434.2090s.ymonmean.nc4'))
+data_aermass_460_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim460.2090s.ymonmean.nc4'))
+data_aermass_585_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                          'GEOSChem.E21.AerosolMass.clim585.2090s.ymonmean.nc4'))
+
+data_aermass_base_cesm <-open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                           'GEOSChem.CESM2.AerosolMass.base.ymonmean.nc4'))
+data_aermass_126_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                        'GEOSChem.CESM2.AerosolMass.clim126.2090s.ymonmean.nc4'))
+data_aermass_245_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                        'GEOSChem.CESM2.AerosolMass.clim245.2090s.ymonmean.nc4'))
+data_aermass_585_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                        'GEOSChem.CESM2.AerosolMass.clim585.2090s.ymonmean.nc4'))
+
+data_pm_base_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.base.nc'))
+data_pm_119_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim119.2090s.nc'))
+data_pm_126_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim126.2090s.nc'))
+data_pm_245_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim245.2090s.nc'))
+data_pm_370_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim370.2090s.nc'))
+data_pm_434_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim434.2090s.nc'))
+data_pm_460_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim460.2090s.nc'))
+data_pm_585_giss <- open.nc(file.path(base_path,'GCAP2-GISS_Raw Data',
+                                           'PM','PM25.noDSTnoSSA.clim585.2090s.nc'))
+data_pm_base_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                       'GCAP2-CESM2','PM25.noDSTnoSSA.base.nc'))
+data_pm_126_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                       'GCAP2-CESM2','PM25.noDSTnoSSA.clim126.2090s.nc'))
+data_pm_245_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                       'GCAP2-CESM2','PM25.noDSTnoSSA.clim245.2090s.nc'))
+data_pm_585_cesm <- open.nc(file.path(base_path,'GCAP2-CESM2_Raw Data',
+                                       'GCAP2-CESM2','PM25.noDSTnoSSA.clim585.2090s.nc'))
+
+
+#get the final bias corrected data
+pm_cor_giss_base <- var.get.nc(data_pm_base_giss,'PM25')
+pm_cor_giss_119 <- var.get.nc(data_pm_119_giss,'PM25')
+pm_cor_giss_126 <- var.get.nc(data_pm_126_giss,'PM25')
+pm_cor_giss_245 <- var.get.nc(data_pm_245_giss,'PM25')
+pm_cor_giss_370 <- var.get.nc(data_pm_370_giss,'PM25')
+pm_cor_giss_434 <- var.get.nc(data_pm_434_giss,'PM25')
+pm_cor_giss_460 <- var.get.nc(data_pm_460_giss,'PM25')
+pm_cor_giss_585 <- var.get.nc(data_pm_585_giss,'PM25')
+
+pm_cor_cesm_base <- var.get.nc(data_pm_base_cesm,'PM25')
+pm_cor_cesm_126 <- var.get.nc(data_pm_126_cesm,'PM25')
+pm_cor_cesm_245 <- var.get.nc(data_pm_245_cesm,'PM25')
+pm_cor_cesm_585 <- var.get.nc(data_pm_585_cesm,'PM25')
+
+#uncorrected PM mass
+sna_growth = 1.1
+org_growth = 1.05
+## GISS ##
+pm_orig_giss_base <- sna_growth*(apply(var.get.nc(data_aermass_base_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                              apply(var.get.nc(data_aermass_base_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                              apply(var.get.nc(data_aermass_base_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                              apply(var.get.nc(data_aermass_base_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_base_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_base_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_119 <- sna_growth*(apply(var.get.nc(data_aermass_119_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_119_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_119_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_119_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_119_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_119_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_126 <- sna_growth*(apply(var.get.nc(data_aermass_126_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_126_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_126_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_126_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_126_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_126_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_245 <- sna_growth*(apply(var.get.nc(data_aermass_245_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_245_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_245_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_245_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_245_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_245_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_370 <- sna_growth*(apply(var.get.nc(data_aermass_370_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_370_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_370_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_370_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_370_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_370_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_434 <- sna_growth*(apply(var.get.nc(data_aermass_434_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_434_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_434_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_434_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_434_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_434_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_460 <- sna_growth*(apply(var.get.nc(data_aermass_460_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_460_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_460_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_460_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_460_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_460_giss,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_giss_585 <- sna_growth*(apply(var.get.nc(data_aermass_585_giss,'AerMassSO4'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_585_giss,'AerMassHMS'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_585_giss,'AerMassNIT'),c(1,2),FUN=mean)+
+                             apply(var.get.nc(data_aermass_585_giss,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_585_giss,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_585_giss,'TotalOA'),c(1,2),FUN=mean)
+##CESM##
+pm_orig_cesm_base <- sna_growth*(apply(var.get.nc(data_aermass_base_cesm,'AerMassSO4'),c(1,2),FUN=mean)+
+                       apply(var.get.nc(data_aermass_base_cesm,'AerMassHMS'),c(1,2),FUN=mean)+
+                       apply(var.get.nc(data_aermass_base_cesm,'AerMassNIT'),c(1,2),FUN=mean)+
+                       apply(var.get.nc(data_aermass_base_cesm,'AerMassNH4'),c(1,2),FUN=mean))+
+                apply(var.get.nc(data_aermass_base_cesm,'AerMassBC'),c(1,2),FUN=mean)+
+                org_growth*apply(var.get.nc(data_aermass_base_cesm,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_cesm_126 <- sna_growth*(apply(var.get.nc(data_aermass_126_cesm,'AerMassSO4'),c(1,2),FUN=mean)+
+                                     apply(var.get.nc(data_aermass_126_cesm,'AerMassHMS'),c(1,2),FUN=mean)+
+                                     apply(var.get.nc(data_aermass_126_cesm,'AerMassNIT'),c(1,2),FUN=mean)+
+                                     apply(var.get.nc(data_aermass_126_cesm,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_126_cesm,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_126_cesm,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_cesm_245 <- sna_growth*(apply(var.get.nc(data_aermass_245_cesm,'AerMassSO4'),c(1,2),FUN=mean)+
+                      apply(var.get.nc(data_aermass_245_cesm,'AerMassHMS'),c(1,2),FUN=mean)+
+                      apply(var.get.nc(data_aermass_245_cesm,'AerMassNIT'),c(1,2),FUN=mean)+
+                      apply(var.get.nc(data_aermass_245_cesm,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_245_cesm,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_245_cesm,'TotalOA'),c(1,2),FUN=mean)
+
+pm_orig_cesm_585 <- sna_growth*(apply(var.get.nc(data_aermass_585_cesm,'AerMassSO4'),c(1,2),FUN=mean)+
+                      apply(var.get.nc(data_aermass_585_cesm,'AerMassHMS'),c(1,2),FUN=mean)+
+                      apply(var.get.nc(data_aermass_585_cesm,'AerMassNIT'),c(1,2),FUN=mean)+
+                      apply(var.get.nc(data_aermass_585_cesm,'AerMassNH4'),c(1,2),FUN=mean))+
+  apply(var.get.nc(data_aermass_585_cesm,'AerMassBC'),c(1,2),FUN=mean)+
+  org_growth*apply(var.get.nc(data_aermass_585_cesm,'TotalOA'),c(1,2),FUN=mean)
+
+#sulfate mass = sulfate/total PM * corrected PM
+
+species_data = list()
+species_list = c('AerMassSO4','AerMassNIT','AerMassBC','AerMassNH4','AerMassSO4','AerMassHMS','TotalOA')
+scenario <- factor(c(rep(c('ssp119'),6),rep(c('ssp126'),6),rep(c('ssp434'),6),
+                   rep(c('ssp245'),6),rep(c('ssp460'),6),rep(c('ssp370'),6),
+                   rep(c('ssp585'),6),rep(c('ssp126'),6),rep(c('ssp245'),6),rep(c('ssp585'),6)), 
+                   levels = c('ssp119','ssp126','ssp434','ssp245','ssp460','ssp370','ssp585'))
+compound <- rep(c('AerMassBC','AerMassNIT','AerMassNH4','AerMassSO4','AerMassHMS','TotalOA'),times = 10)
+concentration <- rep(c(0),60)
+D_Warming <- rep(c(0),60)
+model <- c(rep('GISS', 42),rep('CESM',18))
+df_pm_species <- data.frame(scenario,concentration,model,D_Warming,group=compound)
+
+#make the landmasks
+lon <- var.get.nc(data_aermass_base_giss,'lon')
+lat <- var.get.nc(data_aermass_base_giss,'lat')
+df_giss <- expand.grid(lon=lon+179, lat=lat)
+mask_land_giss <- MaskLand(df_giss$lon,df_giss$lat,mask='world')
+lon <- var.get.nc(data_aermass_base_cesm,'lon')
+lat <- var.get.nc(data_aermass_base_cesm,'lat')
+df_cesm <- expand.grid(lon=lon+180, lat=lat)
+mask_land_cesm <- MaskLand(df_cesm$lon,df_cesm$lat,mask='world')
+
+#calculate the global average corrected PM2.5 mass for each scenario
+lon <- var.get.nc(data_pm_base_giss,'lon')
+lat <- var.get.nc(data_pm_base_giss,'lat')
+df_cor_pm <- expand.grid(lon=lon+180, lat=lat)
+mask_pm_land <- MaskLand(df_cor_pm$lon,df_cor_pm$lat,mask='world')
+df_cor_pm$base_giss <- as.vector(pm_cor_giss_base)
+df_cor_pm$ssp119_giss <- as.vector(pm_cor_giss_119)
+df_cor_pm$ssp126_giss <- as.vector(pm_cor_giss_126)
+df_cor_pm$ssp245_giss <- as.vector(pm_cor_giss_245)
+df_cor_pm$ssp370_giss <- as.vector(pm_cor_giss_370)
+df_cor_pm$ssp434_giss <- as.vector(pm_cor_giss_434)
+df_cor_pm$ssp460_giss <- as.vector(pm_cor_giss_460)
+df_cor_pm$ssp585_giss <- as.vector(pm_cor_giss_585)
+df_cor_pm$base_cesm <- as.vector(pm_cor_cesm_base)
+df_cor_pm$ssp126_cesm <- as.vector(pm_cor_cesm_126)
+df_cor_pm$ssp245_cesm <- as.vector(pm_cor_cesm_245)
+df_cor_pm$ssp585_cesm <- as.vector(pm_cor_cesm_585)
+df_cor_pm<- df_cor_pm %>%
+  mutate(base_giss = case_when(mask_pm_land == TRUE ~ base_giss, TRUE ~ NA),
+         ssp119_giss = case_when(mask_pm_land == TRUE ~ ssp119_giss, TRUE ~ NA),
+         ssp126_giss = case_when(mask_pm_land == TRUE ~ ssp126_giss, TRUE ~ NA),
+         ssp245_giss = case_when(mask_pm_land == TRUE ~ ssp245_giss, TRUE ~ NA),
+         ssp370_giss = case_when(mask_pm_land == TRUE ~ ssp370_giss, TRUE ~ NA),
+         ssp434_giss = case_when(mask_pm_land == TRUE ~ ssp434_giss, TRUE ~ NA),
+         ssp460_giss = case_when(mask_pm_land == TRUE ~ ssp460_giss, TRUE ~ NA),
+         ssp585_giss = case_when(mask_pm_land == TRUE ~ ssp585_giss, TRUE ~ NA),
+         base_cesm = case_when(mask_pm_land == TRUE ~ base_cesm, TRUE ~ NA),
+         ssp126_cesm = case_when(mask_pm_land == TRUE ~ ssp126_cesm, TRUE ~ NA),
+         ssp245_cesm = case_when(mask_pm_land == TRUE ~ ssp245_cesm, TRUE ~ NA),
+         ssp585_cesm = case_when(mask_pm_land == TRUE ~ ssp585_cesm, TRUE ~ NA))
+avg_cor_pm <- data.frame(1)
+avg_cor_pm$base_giss = mean(df_cor_pm$base_giss, na.rm = TRUE)
+avg_cor_pm$ssp119_giss = mean(df_cor_pm$ssp119_giss, na.rm = TRUE)
+avg_cor_pm$ssp126_giss = mean(df_cor_pm$ssp126_giss, na.rm = TRUE)
+avg_cor_pm$ssp245_giss = mean(df_cor_pm$ssp245_giss, na.rm = TRUE)
+avg_cor_pm$ssp370_giss = mean(df_cor_pm$ssp370_giss, na.rm = TRUE)
+avg_cor_pm$ssp434_giss = mean(df_cor_pm$ssp434_giss, na.rm = TRUE)
+avg_cor_pm$ssp460_giss = mean(df_cor_pm$ssp460_giss, na.rm = TRUE)
+avg_cor_pm$ssp585_giss = mean(df_cor_pm$ssp585_giss, na.rm = TRUE)
+avg_cor_pm$base_cesm = mean(df_cor_pm$base_cesm, na.rm = TRUE)
+avg_cor_pm$ssp126_cesm = mean(df_cor_pm$ssp126_cesm, na.rm = TRUE)
+avg_cor_pm$ssp245_cesm = mean(df_cor_pm$ssp245_cesm, na.rm = TRUE)
+avg_cor_pm$ssp585_cesm = mean(df_cor_pm$ssp585_cesm, na.rm = TRUE)
+
+#calculate the land-average change in specie concentrations
+# fraction species * global avg corrected total concentration - original fraction * global avg corrected total concentration
+for (ispc in 1:length(species_list)){
+  if (species_list[ispc] == 'AerMassSO4' | species_list[ispc] == 'AerMassHMS' |
+      species_list[ispc] == 'AerMassNIT' | species_list[ispc] == 'AerMassNH4'){
+    growth = 1.1
+  } else if (species_list[ispc] == 'TotalOA' | species_list[ispc] == 'BiogenicOA' ) {
+    growth =1.05
+  } else {
+    growth = 1
+  }
+  base_giss_temp = (growth*apply(var.get.nc(data_aermass_base_giss,species_list[ispc]),c(1,2),FUN=mean)/
+     pm_orig_giss_base)*avg_cor_pm$base_giss
+  delta_119_giss_temp <-  (growth*apply(var.get.nc(data_aermass_119_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_119)*avg_cor_pm$ssp119_giss - base_giss_temp
+  delta_126_giss_temp <-  (growth*apply(var.get.nc(data_aermass_126_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_126)*avg_cor_pm$ssp126_giss - base_giss_temp
+  delta_245_giss_temp <-  (growth*apply(var.get.nc(data_aermass_245_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_245)*avg_cor_pm$ssp245_giss - base_giss_temp
+  delta_370_giss_temp <-  (growth*apply(var.get.nc(data_aermass_370_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_119)*avg_cor_pm$ssp370_giss - base_giss_temp
+  delta_434_giss_temp <-  (growth*apply(var.get.nc(data_aermass_434_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_434)*avg_cor_pm$ssp434_giss - base_giss_temp
+  delta_460_giss_temp <-  (growth*apply(var.get.nc(data_aermass_460_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_460)*avg_cor_pm$ssp460_giss - base_giss_temp
+  delta_585_giss_temp <-  (growth*apply(var.get.nc(data_aermass_585_giss,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_giss_585)*avg_cor_pm$ssp585_giss - base_giss_temp
+
+  base_cesm_temp = growth*apply(var.get.nc(data_aermass_base_cesm,species_list[ispc]),c(1,2),FUN=mean)/
+     pm_orig_cesm_base*avg_cor_pm$base_cesm
+  delta_126_cesm_temp <-  (growth*apply(var.get.nc(data_aermass_126_cesm,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_cesm_126)*avg_cor_pm$ssp126_cesm - base_cesm_temp
+  delta_245_cesm_temp <-  (growth*apply(var.get.nc(data_aermass_245_cesm,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_cesm_245)*avg_cor_pm$ssp245_cesm - base_cesm_temp
+  delta_585_cesm_temp <-  (growth*apply(var.get.nc(data_aermass_585_cesm,species_list[ispc]),c(1,2),FUN=mean)/
+                    pm_orig_cesm_585)*avg_cor_pm$ssp585_cesm - base_cesm_temp
+
+
+df_giss$delta_119_giss_temp <- as.vector(delta_119_giss_temp)
+df_giss$delta_126_giss_temp <- as.vector(delta_126_giss_temp)
+df_giss$delta_245_giss_temp <- as.vector(delta_245_giss_temp)
+df_giss$delta_370_giss_temp <- as.vector(delta_370_giss_temp)
+df_giss$delta_434_giss_temp <- as.vector(delta_434_giss_temp)
+df_giss$delta_460_giss_temp <- as.vector(delta_460_giss_temp)
+df_giss$delta_585_giss_temp <- as.vector(delta_585_giss_temp)
+df_cesm$delta_126_cesm_temp <- as.vector(delta_126_cesm_temp)
+df_cesm$delta_245_cesm_temp <- as.vector(delta_245_cesm_temp)
+df_cesm$delta_585_cesm_temp <- as.vector(delta_585_cesm_temp)
+
+
+df_giss <-  df_giss %>% 
+  mutate(delta_119_giss_temp = case_when(mask_land_giss == TRUE ~ delta_119_giss_temp, TRUE ~ NA),
+         delta_126_giss_temp = case_when(mask_land_giss == TRUE ~ delta_126_giss_temp, TRUE ~ NA),
+         delta_245_giss_temp = case_when(mask_land_giss == TRUE ~ delta_245_giss_temp, TRUE ~ NA),
+         delta_370_giss_temp = case_when(mask_land_giss == TRUE ~ delta_370_giss_temp, TRUE ~ NA),
+         delta_434_giss_temp = case_when(mask_land_giss == TRUE ~ delta_434_giss_temp, TRUE ~ NA),
+         delta_460_giss_temp = case_when(mask_land_giss == TRUE ~ delta_460_giss_temp, TRUE ~ NA),
+         delta_585_giss_temp = case_when(mask_land_giss == TRUE ~ delta_585_giss_temp, TRUE ~ NA))
+         
+df_cesm <- df_cesm %>%
+  mutate(delta_126_cesm_temp = case_when(mask_land_cesm == TRUE ~ delta_126_cesm_temp, TRUE ~ NA),
+         delta_245_cesm_temp = case_when(mask_land_cesm == TRUE ~ delta_245_cesm_temp, TRUE ~ NA),
+         delta_585_cesm_temp = case_when(mask_land_cesm == TRUE ~ delta_585_cesm_temp, TRUE ~ NA))
+
+
+df_pm_species <- df_pm_species %>%
+  mutate(concentration = case_when(scenario == 'ssp119' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_119_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp126' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_126_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp245' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_245_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp370' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_370_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp434' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_434_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp460' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_460_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp585' & model == 'GISS' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_giss$delta_585_giss_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp126' & model == 'CESM' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_cesm$delta_126_cesm_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp245' & model == 'CESM' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_cesm$delta_245_cesm_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration),
+         concentration = case_when(scenario == 'ssp585' & model == 'CESM' &
+                                     compound == species_list[ispc] ~
+                                     mean(df_cesm$delta_585_cesm_temp, na.rm=TRUE), 
+                                   TRUE ~ concentration)
+  )
+
+
+}
+
+#add temperatures
+df_pm_species <- df_pm_species %>%
+  mutate(D_Warming = case_when(scenario == 'ssp119' & model == 'GISS' ~ 0.42, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp126' & model == 'GISS' ~ 0.62, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp245' & model == 'GISS' ~ 1.45, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp370' & model == 'GISS' ~ 2.27, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp434' & model == 'GISS' ~ 0.97, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp460' & model == 'GISS' ~ 1.85, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp585' & model == 'GISS' ~ 3.18, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp126' & model == 'CESM' ~ 1.42, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp245' & model == 'CESM' ~ 2.51, TRUE ~ D_Warming),
+         D_Warming = case_when(scenario == 'ssp585' & model == 'CESM' ~ 5.00, TRUE ~ D_Warming))
+
+
+#make damage function plot
+#for top 10 countries
+#print(countryResults)
+#top 9 countries in terms of ozone deaths
+#country_list = c('Global')
+
+p_list <- list()
+
+data <- df_pm_species %>%
+    #filter(group =='TotalOA') %>%
+      #add the zero, zero point
+    add_row(model='GISS',concentration=0, scenario = 'ssp0',D_Warming=0) %>% 
+    add_row(model='CESM',concentration=0, scenario = 'ssp0', D_Warming = 0)
+
+  
+p1 <- data %>%
+  ggplot( aes(x=D_Warming,y=concentration,fill=group))+
+  geom_bar(stat = 'identity',width=0.5)+
+  #geom_line(aes(linetype=model), color='black',linewidth=1.5)+
+  #geom_point(size=5, aes(color=factor(group)))+
+  #geom_point(color='black', size=5, shape=1)+
+  geom_hline(yintercept = 0, color = 'black', linetype = 'dashed', linewidth=2)+
+  scale_fill_manual(values = c("#000000","#7C1D16","#FFAA00","#0000FF","#FF1919","#3BB300"))+
+  guides(fill = guide_legend(title = 'PM2.5 Component'))+
+  #scale_color_brewer(palette = 'Spectral', direction = -1)+
+  scale_y_continuous(label=scales::comma)+
+  theme_minimal()+
+  ylab("\u0394 Concentration")+
+  xlab("Degrees of Warming")+theme(legend.position = 'right')+
+  theme(legend.key.height = unit(0.5,'cm'),
+        legend.spacing.y = unit(.5,'cm'),
+        legend.text = element_text(size=12),
+        legend.title = element_text(size=13),
+        axis.text = element_text(size=12),
+        axis.title=element_text(size=14))+
+  labs(linetype= "GCM",color='SSP Scenario')+
+  ggtitle('Global')+
+  theme(plot.title = element_text(size=14, face = 'bold'))
+p1
+p_list[[icountry]] <- p1
+
+ggsave(plot = p1, filename = 
+         file.path(Plots,paste0('Fig4_df_',country_list[icountry],'.png')),width = 6.5,height = 3)
+
+}
+
+p_list
+```
