@@ -2,6 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
+**/input/RFF/pop_income/*
+**/input/RFF/temperature/**
 **/input/RFF/rft_inputs/*
 **/output/rft/*
 **/output/npd/npd_country*
