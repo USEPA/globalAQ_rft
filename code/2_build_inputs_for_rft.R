@@ -1,22 +1,28 @@
 #####
 ## Title:   2_build_inputs_for_rtf.R
 ## Purpose: This file is meant to read in raw RFF scenarios (from Zenodo) and 
-##          build complete GDP (in $2020) and national population 
+##          builds complete GDP (in $2020) and national population 
 ##          timeseries (2010-2300) for input into the ozone and PM mortality model 
 ##          - RFF sp population is in thousands and is converted to # of people.
 ##          - RFF sp is in 2011$ and is converted to 2020$
 ##          This file also formats the MimiGIVE temperature files for use in the rft (from sc-ghg work)
 ##          This file also creates a look-up table of the RFF scenarios' baseline mortality
 ##           baseline mortality = mortality rate * population
-## Inputs:  inputs/RFF/pop_income/rffsp_pop_income_run_x.feather
-##          inputs/RFF/input_data/mx_trajectories.csv
-##          inputs/RFF/input_data/pop_trajectories.csv
-##          inputs/RFF/input_data/TEMPXXXXXXXXX
-## Outputs: inputs/RFF/rft_inputs/rffsp_pop_gdp_i.feather
+## Inputs:  inputs/RFF/pop_income/rffsp_pop_income_run_TRIAL.feather
+##          inputs/IFs/mx_trajectories.csv
+##          inputs/IFs/pop_trajectories.csv
+##          inputs/IFs/adjustment_factors.csv
+##          inputs/IFs/country_crosswalk_2024.csv
+##          inputs/IFs/Crosswalk RFF Mort Year.xlsx
+##          inputs/IFs/ifs_country_codes_2024.csv
+##          inputs/RFF/temperature/path_to_temperature_file
+##          inputs/RFF/temperature/rffsp_fair_sequence.csv
+## Outputs: inputs/RFF/rft_inputs/global_mean_surface_temperature_baseline.parquet
+##          inputs/RFF/rft_inputs/global_mean_surface_temperature_perturbed_GAS_YEAR.parquet
 ##          inputs/RFF/rft_inputs/rffsp_pop_gdp_all_trials.parquet
 ##          inputs/RFF/rft_inputs/All Trajectories Baseline Mortality_Cause Specific.parquet
 ## Written by: US EPA, Climate Change Division; March 2023 & Melanie Jackson, IEc
-## Last updated: 4/1/2025 by E. McDuffie, EPA
+## Last updated: 4/3/2025 by E. McDuffie, EPA
 #####
 
 
@@ -41,7 +47,7 @@ lapply(list.of.packages, library, character.only = TRUE)
 ##########################
 inputpath_rff = file.path('input','RFF','pop_income')
 input_path_temp = file.path('input','RFF','temperature')
-input_path_mort <- 'C:/Users/EMCDUF01/OneDrive - Environmental Protection Agency (EPA)/Documents - CSIB/General/Analysis/Global-Climate-AP-Penalty/Global Climate AQ Study/Mortality_Data'
+input_path_mort <- file.path('input','IFs')
 inputpath_ifs = file.path('input','IFs')
 rft_input_path = file.path('input','RFF','rft_inputs')
 

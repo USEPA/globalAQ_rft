@@ -1,8 +1,9 @@
-### Title: Create Damage Functions
-### Purpose: To convert the webtool outputs into temperature-specific damage functions
+### Title: 1_Create Damage Functions.R
+### Purpose: To convert the webtool outputs (deaths per baseline mortality per scenario 
+###           into temperature-specific impact functions, by country
 ### Created by: Melanie Jackson, IEc, edited by E. McDuffie, OAP/EPA
 ### Date Created: 2/4/2025
-### Last Edited: 4/1/2025
+### Last Edited: 4/4/2025
 ##      Inputs:
 ##        - Country level results for each model and pollutant of 2095
 ##        - SSP temperature crosswalk
@@ -12,8 +13,8 @@
 rm(list = ls()); gc()
 
 #### Step 0. Set data paths ####
-setwd("~/CCD-CSIB/GitHub/Code/globalAQ_rft")
-Outpath<-"output"
+#setwd("~/CCD-CSIB/GitHub/Code/globalAQ_rft")
+Outpath<-"input"
 benmap_data <- "analysis/data"
 
 library(dplyr)
