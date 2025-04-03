@@ -14,7 +14,8 @@
 ##        input/RFF/rft_inputs/sampled_pop_trajectory_numbers.csv                     ##
 ##        input/RFF/rft_inputs/global_mean_surface_temperature_baseline.csv           ##
 ##     Outputs:
-##        - output/rft/
+##        output/rft/damages_mean_rft.csv (and parquet)
+##        output/rft/damages_itrial_rft.csv
 ## Units: Code adjusts all $ values for $2020                                         ##
 ########################################################################################
 
@@ -256,7 +257,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                        # Arrange data by year and group by country, pollutant, and model, then apply cessation lags to the previous [n]years results
                        # note: more concise code to do this utilizes complete and fill, however, this is too slow when looping through 'all' scenarios
                        Impact_Results_wlags <- Impact_Results %>%
-                         select(c('year','LocID','Pollutant','Model','Deaths')) %>%
+                         select(c('year','LocID','Temperature','Pollutant','Model','Deaths')) %>%
                          arrange(year) %>%
                          group_by(LocID,Pollutant,Model) %>%
                          mutate(Deaths_wlag = Deaths * lags[1] +
@@ -290,7 +291,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      } else {
                        # join pop/gdp data and region names
                        Impact_Results <- Impact_Results %>%
-                         select(c(LocID,Country,Year,contains("Deaths"))) %>%
+                         select(c(LocID,Country,Year,Temperature,contains("Deaths"))) %>%
                          left_join(pop_gdp_data,by=c("LocID"="COL","year"="Year")) %>%
                          left_join(countries[,c("COUNTRY","COL","Region")],by=c("LocID"="COL")) %>%
                          rename("Country"="COUNTRY") %>%
@@ -334,7 +335,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      Impact_Results <- Impact_Results %>%
                        mutate(across(all_of(PhysicalImpacts), ~ . * vsl,.names = "Ann_{.col}"),
                               trial = as.numeric(itrial))
-                     colnames(Impact_Results) <- gsub("Ann_Deaths","Annual_$",colnames(Impact_Results))  
+                     colnames(Impact_Results) <- gsub("Ann_Deaths","Annual_impacts",colnames(Impact_Results))  
                      
                      Impact_Results$Pollutant[Impact_Results$Pollutant == "O3"] <- "Ozone"
                      
@@ -352,7 +353,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      Impact_Results <- Impact_Results %>%
                        select(-c(gdp_per_cap,vsl,gdp_reg,pop_reg,vsl_reg,region_gdp_per_cap,vsl_reg))
                      ResultNames <- names(Impact_Results)[grep("Deaths|Annual",names(Impact_Results))]
-                     Impact_Results <- Impact_Results[,c("year","LocID","Country","Region","pop","gdp","Pollutant","Model",ResultNames,"trial")]
+                     Impact_Results <- Impact_Results[,c("year","LocID","Country","Region","Temperature","pop","gdp","Pollutant","Model",ResultNames,"trial")]
                      
                      
                      if (RFF_TrajNumber == 'mean' ) {
