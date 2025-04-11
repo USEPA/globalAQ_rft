@@ -104,7 +104,9 @@ Global.percentiles <- read.csv(file.path(Inputs,"BenMAP","Global CI Percent Diff
 #                         b) between public RFF and underlying temperature projections, subset for years selected
 SampleIDs <- read.csv(file.path(Inputs,"RFF","rft_inputs","sampled_pop_trajectory_numbers.csv"))
 # Description: Cross-walk between mortality and RFF trajectory & trial #s
-RFFTemps <- read_parquet(file.path(Inputs,"RFF","rft_inputs","global_mean_surface_temperature_baseline.parquet")) %>% filter(year %in% Years)
+RFFTemps_baseline <- read_parquet(file.path(Inputs,"RFF","rft_inputs","global_mean_surface_temperature_baseline.parquet")) %>% filter(year %in% Years)
+RFFTemps_perturbed <- read_parquet(file.path(Inputs,"RFF","rft_inputs","global_mean_surface_temperature_perturbed_co2_2030.parquet")) %>% filter(year %in% Years)
+
 #names(RFFTemps)[1]<-"Year"
 # Description: annual temperature associated with the RFF trial number
 
@@ -169,7 +171,11 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                                    NCD_LRI_BaseMort=mean(NCD_LRI_BaseMort)) %>%
                          ungroup()
                        
-                       Temps <- RFFTemps %>%
+                       Temps.b <- RFFTemps_baseline %>%
+                         group_by(year) %>%  #average across all trials for each country and year
+                         summarize(Temperature=mean(temp_C_global)) %>%
+                         ungroup() 
+                       Temps.p <- RFFTemps_perturbed %>%
                          group_by(year) %>%  #average across all trials for each country and year
                          summarize(Temperature=mean(temp_C_global)) %>%
                          ungroup()
@@ -180,12 +186,18 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                        # Therefore, gdp and temp are subset from the 10,000 trials while mortality is subset from the 1,000 samples
                        if(RFF_TrajNumber == 'All'){
                          pop_gdp_data <- pop_gdp_file[pop_gdp_file$trial==itrial,]
-                         Temps <- RFFTemps[RFFTemps$trial==itrial,] %>%
+                         Temps.b <- RFFTemps_baseline[RFFTemps_baseline$trial==itrial,] %>%
+                           rename("Temperature" = "temp_C_global") %>%
+                           select(!trial)
+                         Temps.p <- RFFTemps_pertrubed[RFFTemps_pertrubed$trial==itrial,] %>%
                            rename("Temperature" = "temp_C_global") %>%
                            select(!trial)
                        } else {
                          pop_gdp_data <- pop_gdp_file[pop_gdp_file$trial==RFF_TrajNumber,] #RFF_TrajNumber can be 1-10,000 projections/trials
-                         Temps <- RFFTemps[RFFTemps$trial==RFF_TrajNumber,] %>%
+                         Temps.b <- RFFTemps_baseline[RFFTemps_baseline$trial==RFF_TrajNumber,] %>%
+                           rename("Temperature" = "temp_C_global") %>%
+                           select(!trial)
+                         Temps.p <- RFFTemps_pertrubed[RFFTemps_pertrubed$trial==RFF_TrajNumber,] %>%
                            rename("Temperature" = "temp_C_global") %>%
                            select(!trial)
                        }
@@ -217,9 +229,18 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      by_low_1  <- join_by(closest(Temperature>=min_temp)) # first join doesn't need to be matched by countries
                      by_low_2  <- join_by(LocID,Country,closest(Temperature>=min_temp)) # join matching countries
                      # set negative temperature changes to 0, not modeled in this tool
-                     Impact_Results <- Temps %>% mutate(Temperature = replace(Temperature, Temperature < 0, 0))
+                     Impact_Results.b <- Temps.b %>% mutate(Temperature = replace(Temperature, Temperature < 0, 0))
+                     Impact_Results.p <- Temps.p %>% mutate(Temperature = replace(Temperature, Temperature < 0, 0))
                      # Must add suffix after each 2 joins
-                     Impact_Results <- left_join(Impact_Results,ImpactFxns[ImpactFxns$Pollutant=="Ozone"&ImpactFxns$Model=="GISS",],by_low_1,multiple="all") %>% 
+                     Impact_Results.b <- left_join(Impact_Results.b,ImpactFxns[ImpactFxns$Pollutant=="Ozone"&ImpactFxns$Model=="GISS",],by_low_1,multiple="all") %>% 
+                       select(!c(Pollutant,Model)) %>%
+                       left_join(ImpactFxns[ImpactFxns$Pollutant=="Ozone"&ImpactFxns$Model=="CESM2",],by_low_2,suffix=c("_O3_GISS","_O3_CESM2")) %>% 
+                       select(!c(Pollutant,Model)) %>%
+                       left_join(ImpactFxns[ImpactFxns$Pollutant=="PM"&ImpactFxns$Model=="GISS",],by_low_2) %>% 
+                       select(!c(Pollutant,Model)) %>%
+                       left_join(ImpactFxns[ImpactFxns$Pollutant=="PM"&ImpactFxns$Model=="CESM2",],by_low_2,suffix=c("_PM_GISS","_PM_CESM2")) %>% 
+                       select(!c(Pollutant,Model))
+                     Impact_Results.p <- left_join(Impact_Results.p,ImpactFxns[ImpactFxns$Pollutant=="Ozone"&ImpactFxns$Model=="GISS",],by_low_1,multiple="all") %>% 
                        select(!c(Pollutant,Model)) %>%
                        left_join(ImpactFxns[ImpactFxns$Pollutant=="Ozone"&ImpactFxns$Model=="CESM2",],by_low_2,suffix=c("_O3_GISS","_O3_CESM2")) %>% 
                        select(!c(Pollutant,Model)) %>%
@@ -229,23 +250,34 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                        select(!c(Pollutant,Model))
                      
                      # pivot results longer so there's a column for model/pollutant
-                     Impact_Results <- Impact_Results %>%
+                     Impact_Results.b <- Impact_Results.b %>%
+                       pivot_longer(.,-c(year,Temperature,LocID,Country),  # convert annual results from wide to long
+                                    names_pattern = '^(.*)_(.*)_(.*)$',
+                                    names_to = c(".value","Pollutant","Model"))
+                     Impact_Results.p <- Impact_Results.p %>%
                        pivot_longer(.,-c(year,Temperature,LocID,Country),  # convert annual results from wide to long
                                     names_pattern = '^(.*)_(.*)_(.*)$',
                                     names_to = c(".value","Pollutant","Model"))
                      
                      # calculate damage function from linear model slopes and intercepts (this is faster than using the predict function on lm objects)
-                     Impact_Results <- Impact_Results %>%
+                     Impact_Results.b <- Impact_Results.b %>%
+                       mutate(y_DeathsPerBaseMort = (LM_Slope * Temperature) + LM_Int) %>%
+                       select(c(year,LocID,Temperature,Pollutant,Model,y_DeathsPerBaseMort))
+                     Impact_Results.p <- Impact_Results.p %>%
                        mutate(y_DeathsPerBaseMort = (LM_Slope * Temperature) + LM_Int) %>%
                        select(c(year,LocID,Temperature,Pollutant,Model,y_DeathsPerBaseMort))
                      
                      # Join damage functions with RFF trial baseline mortality data (pop/gdp info not needed yet).
-                     Impact_Results <- left_join(Impact_Results,BaselineMort_data,by=c("LocID","year"="Year"))
+                     Impact_Results.b <- left_join(Impact_Results.b,BaselineMort_data,by=c("LocID","year"="Year"))
+                     Impact_Results.p <- left_join(Impact_Results.p,BaselineMort_data,by=c("LocID","year"="Year"))
                      
                      # Calculate the change in deaths for each pollutant/model and country/year
                      # Baseline mortality is cause-specific, Respiratory (Resp) is a result of Ozone (ages 0-99)
                      # Non-Communicable Diseases + Lower Respiratory Infection (NCD+LRI) is a result of PM (ages 25-99)
-                     Impact_Results <- Impact_Results %>%
+                     Impact_Results.b <- Impact_Results.b %>%
+                       mutate(Deaths = case_when(Pollutant == "O3" ~ y_DeathsPerBaseMort * Resp_BaseMort,
+                                                 Pollutant == "PM" ~ y_DeathsPerBaseMort * NCD_LRI_BaseMort))
+                     Impact_Results.p <- Impact_Results.p %>%
                        mutate(Deaths = case_when(Pollutant == "O3" ~ y_DeathsPerBaseMort * Resp_BaseMort,
                                                  Pollutant == "PM" ~ y_DeathsPerBaseMort * NCD_LRI_BaseMort))
                      
@@ -256,7 +288,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                        # calculate results with 20-yr cessation lag
                        # Arrange data by year and group by country, pollutant, and model, then apply cessation lags to the previous [n]years results
                        # note: more concise code to do this utilizes complete and fill, however, this is too slow when looping through 'all' scenarios
-                       Impact_Results_wlags <- Impact_Results %>%
+                       Impact_Results_wlags.b <- Impact_Results.b %>%
                          select(c('year','LocID','Temperature','Pollutant','Model','Deaths')) %>%
                          arrange(year) %>%
                          group_by(LocID,Pollutant,Model) %>%
@@ -281,16 +313,51 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                                   ifelse(year-18 < 2020, 0, lag(Deaths, 18, order_by = year) * lags[19]) +
                                   ifelse(year-19 < 2020, 0, lag(Deaths, 19, order_by = year) * lags[20]))
                        
-                       Impact_Results <- Impact_Results_wlags %>%
+                       Impact_Results.b <- Impact_Results_wlags.b %>%
                          left_join(pop_gdp_data,by=c("LocID"="COL","year"="Year")) %>%        
                          left_join(countries[,c("COUNTRY","COL","Region")],by=c("LocID"="COL")) %>%
                          rename("Country"="COUNTRY") %>%
                          ungroup()
-                       
-                       rm(Impact_Results_wlags)
+                       rm(Impact_Results_wlags.b)
+                       Impact_Results_wlags.p <- Impact_Results.p %>%
+                         select(c('year','LocID','Temperature','Pollutant','Model','Deaths')) %>%
+                         arrange(year) %>%
+                         group_by(LocID,Pollutant,Model) %>%
+                         mutate(Deaths_wlag = Deaths * lags[1] +
+                                  ifelse(year-1 < 2020, 0, lag(Deaths, 1, order_by = year) * lags[2]) +
+                                  ifelse(year-2 < 2020, 0, lag(Deaths, 2, order_by = year) * lags[3]) +
+                                  ifelse(year-3 < 2020, 0, lag(Deaths, 3, order_by = year) * lags[4]) +
+                                  ifelse(year-4 < 2020, 0, lag(Deaths, 4, order_by = year) * lags[5]) +
+                                  ifelse(year-5 < 2020, 0, lag(Deaths, 5, order_by = year) * lags[6]) +
+                                  ifelse(year-6 < 2020, 0, lag(Deaths, 6, order_by = year) * lags[7]) +
+                                  ifelse(year-7 < 2020, 0, lag(Deaths, 7, order_by = year) * lags[8]) +
+                                  ifelse(year-8 < 2020, 0, lag(Deaths, 8, order_by = year) * lags[9]) +
+                                  ifelse(year-9 < 2020, 0, lag(Deaths, 9, order_by = year) * lags[10]) +
+                                  ifelse(year-10 < 2020, 0, lag(Deaths,10, order_by = year) * lags[11]) +
+                                  ifelse(year-11 < 2020, 0, lag(Deaths, 11, order_by = year) * lags[12]) +
+                                  ifelse(year-12 < 2020, 0, lag(Deaths, 12, order_by = year) * lags[13]) +
+                                  ifelse(year-13 < 2020, 0, lag(Deaths, 13, order_by = year) * lags[14]) +
+                                  ifelse(year-14 < 2020, 0, lag(Deaths, 14, order_by = year) * lags[15]) +
+                                  ifelse(year-15 < 2020, 0, lag(Deaths, 15, order_by = year) * lags[16]) +
+                                  ifelse(year-16 < 2020, 0, lag(Deaths, 16, order_by = year) * lags[17]) +
+                                  ifelse(year-17 < 2020, 0, lag(Deaths, 17, order_by = year) * lags[18]) +
+                                  ifelse(year-18 < 2020, 0, lag(Deaths, 18, order_by = year) * lags[19]) +
+                                  ifelse(year-19 < 2020, 0, lag(Deaths, 19, order_by = year) * lags[20]))
+                       Impact_Results.p <- Impact_Results_wlags.p %>%
+                         left_join(pop_gdp_data,by=c("LocID"="COL","year"="Year")) %>%        
+                         left_join(countries[,c("COUNTRY","COL","Region")],by=c("LocID"="COL")) %>%
+                         rename("Country"="COUNTRY") %>%
+                         ungroup()
+                       rm(Impact_Results_wlags.p)
                      } else {
                        # join pop/gdp data and region names
-                       Impact_Results <- Impact_Results %>%
+                       Impact_Results.b <- Impact_Results.b %>%
+                         select(c(LocID,Country,Year,Temperature,contains("Deaths"))) %>%
+                         left_join(pop_gdp_data,by=c("LocID"="COL","year"="Year")) %>%
+                         left_join(countries[,c("COUNTRY","COL","Region")],by=c("LocID"="COL")) %>%
+                         rename("Country"="COUNTRY") %>%
+                         ungroup()
+                       Impact_Results.p <- Impact_Results.p %>%
                          select(c(LocID,Country,Year,Temperature,contains("Deaths"))) %>%
                          left_join(pop_gdp_data,by=c("LocID"="COL","year"="Year")) %>%
                          left_join(countries[,c("COUNTRY","COL","Region")],by=c("LocID"="COL")) %>%
@@ -303,7 +370,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      #####
                      #Valuation of annual (non-discounted impacts)
                      #1. Calculate reference vsl
-                     usa_base_income <- Impact_Results %>%
+                     usa_base_income <- Impact_Results.b %>%
                        filter(LocID == 840,           #USA 
                               year == 2020,
                               Pollutant == "O3", Model == "GISS") %>% # this filter doesn't change results, just produces 1 output instead of 4
@@ -311,11 +378,19 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                        rename(base_income = gdp_per_cap)
                      
                      # 2. Calculate country-specific VSL in each year
-                     Impact_Results <- Impact_Results %>%
+                     Impact_Results.b <- Impact_Results.b %>%
+                       mutate(vsl = base_vsl*((gdp_per_cap/usa_base_income$base_income)^Elasticity))
+                     Impact_Results.p <- Impact_Results.p %>%
                        mutate(vsl = base_vsl*((gdp_per_cap/usa_base_income$base_income)^Elasticity))
                      
                      # 3. calculate regional VSL & assign to countries with missing vsl data
-                     VSLResults.Reg <- Impact_Results %>%
+                     VSLResults.Reg.b <- Impact_Results.b %>%
+                       filter(Pollutant == "O3", Model == "GISS") %>% # this filter doesn't change results, just produces 1 output instead of 4 (2 polls * 2 models of results)
+                       group_by_at(.vars = c('Region','year')) %>%
+                       summarise_at(.vars= c('gdp','pop'), sum, na.rm=TRUE) %>%
+                       mutate(region_gdp_per_cap = gdp/pop) %>%
+                       mutate(vsl_reg = base_vsl*((region_gdp_per_cap/usa_base_income$base_income)^Elasticity))
+                     VSLResults.Reg.p <- Impact_Results.p %>%
                        filter(Pollutant == "O3", Model == "GISS") %>% # this filter doesn't change results, just produces 1 output instead of 4 (2 polls * 2 models of results)
                        group_by_at(.vars = c('Region','year')) %>%
                        summarise_at(.vars= c('gdp','pop'), sum, na.rm=TRUE) %>%
@@ -324,44 +399,69 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      
                      # Assign regional vsl when there is no country vsl available
                      # join regional data, then use coalesce (fills in NAs)
-                     Impact_Results <- left_join(Impact_Results,VSLResults.Reg,by=c("Region","year"="year"),suffix=c("","_reg"))
-                     Impact_Results <- Impact_Results %>%
+                     Impact_Results.b <- left_join(Impact_Results.b,VSLResults.Reg.b,by=c("Region","year"="year"),suffix=c("","_reg"))
+                     Impact_Results.b <- Impact_Results.b %>%
+                       mutate(vsl = coalesce(vsl,vsl_reg),
+                              pop = coalesce(pop,pop_reg),
+                              gdp = coalesce(gdp,gdp_reg))
+                     Impact_Results.p <- left_join(Impact_Results.p,VSLResults.Reg.p,by=c("Region","year"="year"),suffix=c("","_reg"))
+                     Impact_Results.p <- Impact_Results.p %>%
                        mutate(vsl = coalesce(vsl,vsl_reg),
                               pop = coalesce(pop,pop_reg),
                               gdp = coalesce(gdp,gdp_reg))
                      
-                     # 4. Calculate annual monetary (un-discounted) damages
-                     PhysicalImpacts <- names(Impact_Results)[grep("Deaths",names(Impact_Results))] # this method includes wlag if it exists
-                     Impact_Results <- Impact_Results %>%
-                       mutate(across(all_of(PhysicalImpacts), ~ . * vsl,.names = "Ann_{.col}"),
-                              trial = as.numeric(itrial))
-                     colnames(Impact_Results) <- gsub("Ann_Deaths","Annual_impacts",colnames(Impact_Results))  
                      
-                     Impact_Results$Pollutant[Impact_Results$Pollutant == "O3"] <- "Ozone"
+                     # 4. Calculate annual monetary (un-discounted) damages
+                     PhysicalImpacts.b <- names(Impact_Results.b)[grep("Deaths",names(Impact_Results.b))] # this method includes wlag if it exists
+                     Impact_Results.b <- Impact_Results.b %>%
+                       mutate(across(all_of(PhysicalImpacts.b), ~ . * vsl,.names = "Ann_{.col}"),
+                              trial = as.numeric(itrial))
+                     colnames(Impact_Results.b) <- gsub("Ann_Deaths","Annual_impacts",colnames(Impact_Results.b))  
+                     Impact_Results.b$Pollutant[Impact_Results.b$Pollutant == "O3"] <- "Ozone"
+                     PhysicalImpacts.p <- names(Impact_Results.p)[grep("Deaths",names(Impact_Results.p))] # this method includes wlag if it exists
+                     Impact_Results.p <- Impact_Results.p %>%
+                       mutate(across(all_of(PhysicalImpacts.p), ~ . * vsl,.names = "Ann_{.col}"),
+                              trial = as.numeric(itrial))
+                     colnames(Impact_Results.p) <- gsub("Ann_Deaths","Annual_impacts",colnames(Impact_Results.p))  
+                     Impact_Results.p$Pollutant[Impact_Results.p$Pollutant == "O3"] <- "Ozone"
+                     
                      
                      # For mean scenario, calculate 2.5th and 97.5th percentiles using global average percent difference from mean 
                      # Due to time constraints, unable to add full monte carlo
-                     ResultNames <- names(Impact_Results)[grep("Deaths|Annual",names(Impact_Results))]
+                     ResultNames.b <- names(Impact_Results.b)[grep("Deaths|Annual",names(Impact_Results.b))]
+                     ResultNames.p <- names(Impact_Results.p)[grep("Deaths|Annual",names(Impact_Results.p))]
                      if (RFF_TrajNumber == 'mean' ) {
-                       Impact_Results <- left_join(Impact_Results,Global.percentiles,by=c("Pollutant"="pollutant","Model"="model")) %>%
-                         mutate(across(all_of(ResultNames), ~ . * (1-PE_2_5_PctDiff) ,.names="{.col}_2_5"),
-                                across(all_of(ResultNames), ~ . * (1+PE_97_5_PctDiff),.names="{.col}_97_5")) %>%
+                       Impact_Results.b <- left_join(Impact_Results.b,Global.percentiles,by=c("Pollutant"="pollutant","Model"="model")) %>%
+                         mutate(across(all_of(ResultNames.b), ~ . * (1-PE_2_5_PctDiff) ,.names="{.col}_2_5"),
+                                across(all_of(ResultNames.b), ~ . * (1+PE_97_5_PctDiff),.names="{.col}_97_5")) %>%
+                         select(-c(PE_2_5_PctDiff, PE_97_5_PctDiff))
+                       Impact_Results.p <- left_join(Impact_Results.p,Global.percentiles,by=c("Pollutant"="pollutant","Model"="model")) %>%
+                         mutate(across(all_of(ResultNames.p), ~ . * (1-PE_2_5_PctDiff) ,.names="{.col}_2_5"),
+                                across(all_of(ResultNames.p), ~ . * (1+PE_97_5_PctDiff),.names="{.col}_97_5")) %>%
                          select(-c(PE_2_5_PctDiff, PE_97_5_PctDiff))
                      } 
                      
                      #cleanup/format results and column names
-                     Impact_Results <- Impact_Results %>%
+                     Impact_Results.b <- Impact_Results.b %>%
                        select(-c(gdp_per_cap,vsl,gdp_reg,pop_reg,vsl_reg,region_gdp_per_cap,vsl_reg))
-                     ResultNames <- names(Impact_Results)[grep("Deaths|Annual",names(Impact_Results))]
-                     Impact_Results <- Impact_Results[,c("year","LocID","Country","Region","Temperature","pop","gdp","Pollutant","Model",ResultNames,"trial")]
+                     ResultNames.b <- names(Impact_Results.b)[grep("Deaths|Annual",names(Impact_Results.b))]
+                     Impact_Results.b <- Impact_Results.b[,c("year","LocID","Country","Region","Temperature","pop","gdp","Pollutant","Model",ResultNames.b,"trial")]
+                     Impact_Results.p <- Impact_Results.p %>%
+                       select(-c(gdp_per_cap,vsl,gdp_reg,pop_reg,vsl_reg,region_gdp_per_cap,vsl_reg))
+                     ResultNames.p <- names(Impact_Results.p)[grep("Deaths|Annual",names(Impact_Results.p))]
+                     Impact_Results.p <- Impact_Results.p[,c("year","LocID","Country","Region","Temperature","pop","gdp","Pollutant","Model",ResultNames.p,"trial")]
                      
+                     ##COMBINE 
+                     results_i <- Impact_Results.b %>% mutate(damageType = "Baseline") %>% 
+                       rbind( Impact_Results.p %>% mutate(damageType = "Perturbed") )
+                     ###
                      
                      if (RFF_TrajNumber == 'mean' ) {
-                       Impact_Results %>%
+                       results_i %>%
                          write_parquet(file.path(Outputs,paste0('damages_mean_rft.parquet'))) %>%
                          write.csv(file.path(Outputs,paste0('damages_mean_rft.csv')),row.names=F)
                      } else {
-                       Impact_Results %>% 
+                       results_i %>% 
                          write_parquet(file.path(Outputs,paste0('damages_',itrial,'_rft.parquet')))
                      }
                      
@@ -374,5 +474,20 @@ proc.time() - ptm
 ###### Finish #####
 ### stop cluster
 #  parallel::stopCluster(cl = my.cluster)
+
+
+## print mean baseline 2100 results
+filter_results <- Impact_Results.b %>% 
+  filter(year ==2100) %>%
+  group_by_at(.vars = c('Country','Pollutant')) %>% #mean across models
+  summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), mean) %>%
+  ungroup()
+print('Global PM Results: ')
+print(filter_results %>% filter(Pollutant == 'PM') %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
+print('Global Ozone Results: ')
+print(filter_results %>% filter(Pollutant == 'Ozone') %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
+print('Global Net Results: ')
+print(filter_results %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
+
 
 # Code Complete. Discounting of annual damages done in Code file #3    

@@ -127,7 +127,7 @@ temp =
 ## recover 2005-2014 baseline scale
 temp.relative.baseline = 
   temp %>% 
-  filter(year %in% seq(2005, 2014, 5)) %>% 
+  filter(year %in% seq(2005, 2014, 1)) %>% 
   group_by(trial) %>% 
   summarise(base.2005.2014 = mean(temp_C_global)) %>% 
   ungroup()
@@ -136,7 +136,7 @@ temp.relative.baseline =
 temp %<>% 
   left_join(temp.relative.baseline) %>% 
   mutate(temp_C_global = temp_C_global - base.2005.2014) %>% 
-  filter(year %in% seq(2020, 2300, 5)) %>%
+  filter(year %in% seq(2020, 2300, 1)) %>%
   select(-base.2005.2014) %>% 
   left_join(rffsp_sample) %>% 
   relocate(trial, rffsp.id, year)
@@ -172,7 +172,7 @@ temp %<>%
   left_join(temp.relative.baseline,
             by = 'trial') %>% 
   mutate(temp_C_global = temp_C_global - base.2005.2014) %>% 
-  filter(year %in% seq(2020, 2300, 5)) %>%
+  filter(year %in% seq(2020, 2300, 1)) %>%
   select(-base.2005.2014) %>% 
   left_join(rffsp_sample,
             by = 'trial') %>% 
