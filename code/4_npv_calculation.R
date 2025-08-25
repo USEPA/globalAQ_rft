@@ -368,4 +368,21 @@ if (allRFF ==1){
       write_csv(file.path(Outputs,paste0('npd_global_means.csv')))
 }
 
+glob_avg_spc <- glob_means %>% 
+  group_by(discount.rate,Pollutant) %>% 
+  summarise(mean_npd = mean(mean_npd),
+            mean.npd.cert.eq = mean(mean.npd.cert.eq),
+            npd_2.5 = quantile(npd_2.5, .025, na.rm = T),
+            npd_97.5 = quantile(npd_97.5, .975, na.rm = T)) 
+glob_avg_net <- glob_means %>% 
+  group_by(discount.rate,Model) %>% 
+  summarise(mean_npd = sum(mean_npd),
+            mean.npd.cert.eq = sum(mean.npd.cert.eq),
+            npd_2.5 = quantile(npd_2.5, .025, na.rm = T),
+            npd_97.5 = quantile(npd_97.5, .975, na.rm = T))%>% 
+  ungroup %>% 
+  group_by(discount.rate) %>% 
+  summarise(mean_npd = mean(mean_npd),
+            mean.npd.cert.eq = mean(mean.npd.cert.eq),
+            npd_2.5 = mean(npd_2.5),npd_97.5 = mean(npd_97.5))
   #CODE END  

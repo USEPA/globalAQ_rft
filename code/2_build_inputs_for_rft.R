@@ -1,10 +1,10 @@
 #####
 ## Title:   2_build_inputs_for_rtf.R
 ## Purpose: This file is meant to read in raw RFF scenarios (from Zenodo) and 
-##          builds complete GDP (in $2020) and national population 
+##          builds complete GDP (in $2024) and national population 
 ##          timeseries (2010-2300) for input into the ozone and PM mortality model 
 ##          - RFF sp population is in thousands and is converted to # of people.
-##          - RFF sp is in 2011$ and is converted to 2020$
+##          - RFF sp is in 2011$ and is converted to 2024$
 ##          This file also formats the MimiGIVE temperature files for use in the rft (from sc-ghg work)
 ##          This file also creates a look-up table of the RFF scenarios' baseline mortality
 ##           baseline mortality = mortality rate * population
@@ -56,9 +56,9 @@ rft_input_path = file.path('input','RFF','rft_inputs')
 ##########################
 
 ### Read-in RFF-SP Population and GSP data, format to correct units
-#rff-sps are in units of 1000's of people and 2011 dollars. Covert to people and 2020$
-gdp_2011_to_2020 = 105.361/91.481 # GDP Implicit Price Deflators (https://apps.bea.gov/iTable/?reqid=19&step=3&isuri=1&select_all_years=0&nipa_table_list=13&series=a&first_year=2006&last_year=2020&scale=-99&categories=survey&thetable= )
-#last access: April 1, 2025
+#rff-sps are in units of 1000's of people and 2011 dollars. Covert to people and 2024$
+gdp_2011_to_2024 = 125.230/91.481 # GDP Implicit Price Deflators (https://apps.bea.gov/iTable/?reqid=19&step=3&isuri=1&select_all_years=0&nipa_table_list=13&series=a&first_year=2006&last_year=2020&scale=-99&categories=survey&thetable= )
+#last access: August 28, 2025
 
 #### read rffsps
 #collect file names
@@ -82,9 +82,9 @@ rffsp_pop_gdp <-
     ### Filter data for model type, national total, desired sectors, baseline scenario
     data_i    <- data_i   %>% 
       filter(Year <= 2300) %>% #filter for pre-2300
-      mutate(gdp = GDP * gdp_2011_to_2020 * 1e6) %>% #RFF data is in millions of 2011$, convert to 2020$
+      mutate(gdp = GDP * gdp_2011_to_2024 * 1e6) %>% #RFF data is in millions of 2011$, convert to 2024$
       mutate(pop = Pop * 1e3) %>%                    #RFF population data is in 1000s, convert to individual ppl
-      mutate(dollar.year = 2020) %>%
+      mutate(dollar.year = 2024) %>%
       select(-c('GDP','Pop')) %>%
       mutate(trial = i) #%>%
     ## export scenario-specific population files to read into the RFT

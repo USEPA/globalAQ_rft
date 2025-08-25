@@ -4,7 +4,7 @@
 ### Created by: Melanie Jackson, IEc 
 ### Adapted by: E. McDuffie (EPA) & Melanie Jackson, IEc
 ### Date Created: 3/15/2023      
-### Last Edited: 4/3/2025
+### Last Edited: 8/25/2025
 ##      Inputs:    
 ##        input/RFF/rft_inputs/rff_pop_gdp_all_trials.parquet                         ##
 ##        input/RFF/rft_inputs/Trajectories Baseline Mortality_Cause Specific.parquet ##
@@ -46,9 +46,9 @@ Outputs <- file.path("output","rft")
 ########
 ##### Define constants 
 #######
-gdp_2011_to_2020    = 105.361/91.481 # GDP Implicit Price Deflators (https://apps.bea.gov/iTable/?reqid=19&step=3&isuri=1&select_all_years=0&nipa_table_list=13&series=a&first_year=2006&last_year=2020&scale=-99&categories=survey&thetable= )
-#last access: February 10, 2025
-base_vsl            = 10.05e6 # $2020 VSL from Rennert et al., 2022 (and EPA SC-GHG report) 9.33e6  # = USD VSL in 2006$, inflated to 2020$ (from EPA 2010)
+gdp_2011_to_2024    = 125.230/91.481 # GDP Implicit Price Deflators (https://apps.bea.gov/iTable/?reqid=19&step=3&isuri=1&select_all_years=0&nipa_table_list=13&series=a&first_year=2006&last_year=2020&scale=-99&categories=survey&thetable= )
+#last access: August 28, 2025
+base_vsl            = 13.90e6 # $2024 VSL from Rennert et al., 2022 (and EPA SC-GHG report) 9.33e6  # = USD VSL in 2006$, inflated to 2024$ (from EPA 2010)
 Elasticity          = 1  # income elasticity
 endYear             = 2300
 Years               <- c(2020:endYear) # set simulation years
@@ -128,7 +128,7 @@ BaselineMort <- read_parquet(file.path(Inputs,"RFF","rft_inputs", "All Trajector
 # all countries in 1000 RFF scenarios
 # These respiratory mortality data are already corrected with Int'l Futures respiratory / NCD+LRI to all-cause mortality ratio
 pop_gdp_file <- read_parquet(file.path(Inputs,"RFF","rft_inputs",'rffsp_pop_gdp_all_trials.parquet'))
-# Description: GDP (in $2020) and national population of 10000 RFF trials
+# Description: GDP (in $2024) and national population of 10000 RFF trials
 
 
 ########
@@ -175,6 +175,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                          group_by(year) %>%  #average across all trials for each country and year
                          summarize(Temperature=mean(temp_C_global)) %>%
                          ungroup() 
+                       #Temps.b['Temperature'] = 4 #calculate results for 2C of warming. 
                        Temps.p <- RFFTemps_perturbed %>%
                          group_by(year) %>%  #average across all trials for each country and year
                          summarize(Temperature=mean(temp_C_global)) %>%
@@ -489,5 +490,8 @@ print(filter_results %>% filter(Pollutant == 'Ozone') %>% summarise_at(.vars = c
 print('Global Net Results: ')
 print(filter_results %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
 
-
-# Code Complete. Discounting of annual damages done in Code file #3    
+Net_Avg_Impacts.b <- filter_results %>%
+  group_by_at(.vars = c('Country')) %>% #sum across pollutants
+  summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum) %>%
+  ungroup()
+# Code Complete. Discounting of annual damages done in Code file #4    
