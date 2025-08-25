@@ -1,7 +1,7 @@
 ---
 title: "Plot_Damage_Figures (for global air quality paper)"
 author: "E. McDuffie"
-date: "2025-03-25"
+date: "2025-08-21"
 output: html_document
 ---
 
@@ -33,10 +33,13 @@ global maps of respiratory mortality (per capita?) (from ssp245)
 
 ```{r, countrymap_percapita}
 
-Plots <- file.path(getwd(),'figures')
+Plots <- file.path(getwd(),'Plots')
 input <- file.path(getwd(),'data')
 
 countryResults <- read.csv(file.path(input,"result_summary_by_country.csv"))
+countryResults <- countryResults %>%
+  filter(scenario %in% c(126, 245, 585))
+
 print(countryResults)
 summary_ozone <- countryResults %>%
   filter(scenario == 245,
@@ -191,7 +194,7 @@ damage functions for top countries
 
 ```{r, countrymap_percapita}
 
-Plots <- file.path(getwd(),'figures')
+Plots <- file.path(getwd(),'Plots')
 input <- file.path(getwd(),'data')
 
 countryResults <- read.csv(file.path(input,"result_summary_by_country.csv"))
@@ -285,8 +288,8 @@ ggsave(plot = p5, filename =
 #make damage function plot
 #for top 10 countries
 print(countryResults)
-#top 9 countries in terms of ozone deaths
-country_list = c('Global','India','China','Pakistan','Bangladesh','United States', 'Indonesia','Russian Federation','Germany')
+#top 9 countries in terms of PM deaths
+country_list = c('Global','China','Pakistan','United States', 'Germany','Indonesia','Russian Federation','Ethiopia','Vietnam','Democratic Republic of the Congo')
 
 p_list <- list()
 
@@ -305,6 +308,16 @@ for (icountry in 1:length(country_list)) {
          per_capita = incidence*1e5/population) #convert to deaths per capita per 100k
   } else {
 damage_data <- countryResults %>%
+  if (country_list[icountry] == 'Democratic Republic of the Congo' & scenario != 245){
+    filter(pollutant=='PM',
+         year==2095,
+         COUNTRY == 'Congo DRC') %>%
+  #add the zero, zero point
+  add_row(model='GISS',incidence=0, scenario = 0,per_capita = 0, D_Warming=0,population=1) %>% 
+  add_row(model='NCAR',incidence=0, scenario = 0, per_capita = 0, D_Warming=0,population=1) %>%
+  mutate(scenario = paste0('SSP',scenario),
+         per_capita = per_capita*1e5) #convert to deaths per capita per 100k
+  } else {
   filter(pollutant=='PM',
          year==2095,
          COUNTRY == country_list[icountry]) %>%
@@ -313,6 +326,7 @@ damage_data <- countryResults %>%
   add_row(model='NCAR',incidence=0, scenario = 0, per_capita = 0, D_Warming=0,population=1) %>%
   mutate(scenario = paste0('SSP',scenario),
          per_capita = per_capita*1e5) #convert to deaths per capita per 100k
+  }
 }
   
 p1 <- damage_data %>%
@@ -341,6 +355,259 @@ ggsave(plot = p1, filename =
 }
 
 p_list
+```
+
+
+#Figure 5 - bar chart of NPD values by region
+```{r, damagesbar}
+
+Plots <- file.path(getwd(),'analysis','Plots')
+inputs <- file.path(getwd(),'output','npd')
+input2 <- file.path(getwd(),'analysis','data')
+
+Ctry.Name<-read.csv(file.path(input2,'Final Country Grid Col_Row Index.csv'))
+
+countryresults <-
+   read_csv(file.path(inputs,"npd_all_country_means.csv"),
+           col_types = cols()) %>%
+  left_join(Ctry.Name, by=c('LocID'='COL'))
+
+globalresults <-
+  read_csv(file.path(inputs, "npd_global_means.csv"),
+           col_types = cols())
+
+globalresults <- 
+  globalresults  %>%
+  group_by_at(.vars = c('Model','Pollutant','discount.rate')) %>%
+  mutate(npd = mean_npd, 
+         npd_crf_2.5 = mean_npd_2.5,
+         npd_crf_97.5 = mean_npd_97.5) %>%
+  select(c(Model,discount.rate,Pollutant,npd, npd_crf_2.5, npd_crf_97.5)) %>%
+  arrange(desc(npd)) %>%
+  #filter(Model =='MMM') %>%
+  mutate(SuperRegion = 'Global')%>%
+  filter(discount.rate %in% 
+           c('1.5% Ramsey', '2.0% Ramsey', '2.5% Ramsey', "3.0% Ramsey",'7.0% Ramsey', '2.0% CDR','3.0% CDR','7.0% CDR'))
+
+cResultslong <- countryresults %>%
+  group_by_at(.vars = c('Model','Pollutant','SuperRegion','discount.rate')) %>% #add pollutant
+  summarise_at(c('npd','npd_crf_2.5','npd_crf_97.5'),sum,na.rm=T) %>%
+  ungroup() %>%
+  arrange(desc(npd)) %>%
+  #filter(Model =='MMM') #%>%
+  rbind(globalresults) %>%
+  #group_by_at(.vars = c('Model','SuperRegion','discount.rate')) %>%
+  #summarise_at(c('npd','npd_crf_2.5','npd_crf_97.5'),sum,na.rm=T) %>% #sum PM+O3
+  group_by_at(.vars = c('Pollutant','SuperRegion','discount.rate')) %>%
+  summarise_at(c('npd','npd_crf_2.5','npd_crf_97.5'),mean,na.rm=T) #avg models
+
+## ordering of central rate for alpha transparency
+cResultslong$discount.rate <- factor(cResultslong$discount.rate, 
+                                  levels=c('7.0% CDR','3.0% CDR','2.0% CDR',
+                                          "7.0% Ramsey","3.0% Ramsey",
+                                          "2.5% Ramsey", 
+                                          "2.0% Ramsey", "1.5% Ramsey" ))
+
+## function for labels
+means = cResultslong %>% 
+  group_by_at(c('Pollutant','discount.rate','SuperRegion')) %>% 
+  summarise(means=npd) %>% 
+  ungroup() %>%
+  #mutate(across(c('means'), ~ signif(.,3))) %>%
+  mutate(means = case_when( means >10 ~ signif(means,2), TRUE ~signif(means,1)))
+
+lower = cResultslong %>% 
+  group_by_at(c('Pollutant','discount.rate','SuperRegion')) %>% 
+  summarise(means=npd_crf_2.5) %>% 
+  ungroup() %>%
+  mutate(across(c('means'), ~ signif(.,2)))
+
+upper = cResultslong %>% 
+  group_by_at(c('Pollutant','discount.rate','SuperRegion')) %>% 
+  summarise(means=npd_crf_97.5) %>% 
+  ungroup() %>%
+  mutate(across(c('means'), ~ signif(.,2)))
+
+    
+  reg_i <- cResultslong %>% 
+  group_by_at(.vars=c('Pollutant',"SuperRegion")) %>% 
+  summarize_at(.vars=c("npd"),sum,na.rm=T) %>%
+  ungroup %>% arrange((npd)) %>%
+  distinct(SuperRegion)
+
+  cResultslong <- cResultslong %>% 
+  mutate(SuperRegion = SuperRegion %>% factor(levels = (reg_i$SuperRegion))) %>%
+  arrange_at(.vars=c("SuperRegion"))
+  
+  # Figure S7
+  
+  p1 <-  ggplot(cResultslong, aes(x=SuperRegion, y=npd))+
+        geom_linerange(aes(x=SuperRegion,ymin=npd_crf_2.5, ymax=npd_crf_97.5,group=discount.rate),
+                       color = 'lightgray',size=1,
+                       position = position_dodge(0.8))+
+        geom_point(aes(color = discount.rate), position = position_dodge(0.8),size=2)+
+        coord_flip()+
+        scale_color_brewer('Discount Rate',palette = 'Spectral',direction=-1)+
+        scale_x_discrete(labels = function(x) str_wrap(x,width=30))+
+        scale_y_continuous(limits=c(-50,100), label = scales::dollar)+
+        xlab("")+ylab("$(2020)/mT" ~CO[2])+
+        ggtitle(paste0('Net Present Damages per metric ton CO2 \nby GBD Super Region'))+
+        theme_minimal()+
+        theme(legend.position = c(0.7,0.4),
+              legend.title=element_text(size=16), 
+              legend.text=element_text(size=16))+
+        theme(axis.text = element_text(size=16),
+              axis.title = element_text(size=16))+
+        theme(plot.background = element_rect(fill = 'white'))
+  p1
+  
+# Figure 2c
+p2 <-  cResultslong %>%
+        filter(discount.rate == '2.0% Ramsey') %>%
+        ggplot(aes(x=SuperRegion, y=npd,fill = Pollutant))+
+        geom_bar(stat = 'identity', position = 'dodge',width=0.7)+
+        geom_pointrange(aes(x=SuperRegion,ymin=npd_crf_2.5, ymax=npd_crf_97.5),
+                        position =
+                        position_dodge(width=0.65),
+                        size=0.3,alpha=0.8)+#errobar,width = 0.4)+
+        coord_flip()+
+        scale_fill_manual(values = c('purple','darkgreen'))+
+        #scale_fill_brewer(palette = 'Spectral',direction=1)+
+        scale_x_discrete(labels = function(x) str_wrap(x,width=30))+
+        scale_y_continuous(limits=c(-35,30), label = scales::dollar)+
+        xlab("")+ylab("$(2020)/mT" ~CO[2])+
+        ggtitle(paste0('Damages per metric ton CO2 \nby GBD Super Region (Model Average)'))+
+        theme_minimal()+
+        theme(legend.position = 'none')+#c(0.7,0.3))+
+        theme(axis.text = element_text(size=16),
+              axis.title = element_text(size=16))+
+        #geom_text(data=means%>%filter(discount.rate == '2.0% Ramsey'),
+        #    aes(y=means, x=SuperRegion,
+        #        label=paste0('$', round(means, 2))), 
+        #        position = position_dodge(width=1),
+        #        vjust=-0.0,
+        #        hjust = -0.8,
+        #    color    = 'grey20',
+        #    size     = 4)+
+        theme(legend.position = c(0.2,0.8),
+              legend.title=element_text(size=12), 
+              legend.text=element_text(size=12))+
+        theme(plot.background = element_rect(fill = 'white'))
+p2
+
+ggsave(plot = p1, filename = 
+         file.path(Plots,'FigSXX.png'),width = 10,height = 5)
+ggsave(plot = p2, filename = 
+         file.path(Plots,'FigXX.png'),width = 10,height = 5)
+
+```
+
+#Figure 6 - tornado plot
+```{r tornado}
+
+#these are the npd sensitivities (for global results)
+
+#create a tornado plot with npd results from:
+#1. different GCMs (created from npd code)
+#2. BenMAP (created from npd code)
+#3. Discounting (created from npd code)
+#3. socioeconomic (& emission?) scenarios (from RFF-SP's)
+#4. other?
+
+
+#Read in 
+Plots <- file.path(getwd(), 'analysis', 'Plots')
+inputs <- file.path(getwd(),'output','npd')
+input2 <- file.path(getwd(),'analysis','data')
+Results <- file.path('Results')
+
+# CRF results - from npd script
+globalresults <-
+  read_csv(file.path(inputs, "npd_global_means.csv"),
+           col_types = cols())# %>%
+globalresults <- globalresults %>%
+  group_by_at(.vars = c('discount.rate','Model'))%>%
+  summarise_at(c('mean_npd','mean_npd_crf_2.5','mean_npd_crf_97.5','npd_2.5','npd_97.5'),sum,na.rm=T) #sum pollutants
+globalavg_results <- globalresults %>%
+  group_by_at(.vars = c('discount.rate'))%>%
+  summarise_at(c('mean_npd','mean_npd_crf_2.5','mean_npd_crf_97.5','npd_2.5','npd_97.5'),mean,na.rm=T) #average over models
+
+#Socioeconomic results - from RFT code
+#Results2 <- file.path(rft_inputs,'npd_global_rff_means_vsl10_NOx_1_MMM.csv')
+#rft_results <- read_csv(Results2, col_types = cols())
+
+#NOx sensitivity results- from RFT code
+#nox_results1 <- file.path(rft_inputs,'npd_global_means_vsl10_NOx_1_MMM.csv')
+#nox_results1 <- read_csv(nox_results1, col_types = cols())%>%
+#  mutate(NOx = '1')
+#nox_results5 <- file.path(rft_inputs, 'npd_global_means_vsl10_NOx_0.5_MMM.csv')
+#nox_results5 <- read_csv(nox_results5, col_types = cols())%>%
+#  mutate(NOx = '0.5')
+#nox_results15 <- file.path(rft_inputs, 'npd_global_means_vsl10_NOx_1.5_MMM.csv')
+#nox_results15 <- read_csv(nox_results15, col_types = cols()) %>%
+#  mutate(NOx = '1.5')
+#nox_total_results <- rbind(nox_results1,nox_results5,nox_results15)
+
+
+
+#cols: Group, Sub-Group, Min, Max, Mean
+group_col <- c(rep("CRF (95% CI)",2),rep("GCM (mean)",2),rep("Socioeconomics (95% CI)",2),
+                          rep("Discount Rate (mean)",7),rep('Emissions/Climate Sensitivity (\u0394 50%)',2))
+subgroup_col <- (c("CRF Upper","CRF Lower","CESM","GISS","SocioEcon. Upper","SocioEcon. Lower",
+                  "1.5% Ramsey","2.5% Ramsey","3.0% Ramsey","7.0% Ramsey", "2.0% CDR",'3.0% CDR','7.0% CDR', 'Emis/Clim. Upper','Emis/Clim. Lower'))
+val_col <- c(globalavg_results$mean_npd_crf_97.5[globalavg_results$discount.rate=='2.0% Ramsey'],
+             globalavg_results$mean_npd_crf_2.5[globalavg_results$discount.rate=='2.0% Ramsey'],
+             globalresults$mean_npd[globalresults$Model=='CESM2' & globalresults$discount.rate=='2.0% Ramsey'],
+             globalresults$mean_npd[globalresults$Model=='GISS' & globalresults$discount.rate=='2.0% Ramsey'],
+             globalavg_results$npd_97.5[globalavg_results$discount.rate=='2.0% Ramsey'],
+             globalavg_results$npd_2.5[globalavg_results$discount.rate=='2.0% Ramsey'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='1.5% Ramsey'],
+             #globalresults$mean[globalresults$Model=='MMM' & globalresults$discount.rate=='2.0% Ramsey'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='2.5% Ramsey'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='3.0% Ramsey'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='7.0% Ramsey'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='2.0% CDR'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='3.0% CDR'],
+             globalavg_results$mean_npd[globalavg_results$discount.rate=='7.0% CDR'],
+             globalavg_results$npd_97.5[globalavg_results$discount.rate=='2.0% Ramsey'], ##need to change these later (need to run mean SD with changes in temperature)
+             globalavg_results$npd_2.5[globalavg_results$discount.rate=='2.0% Ramsey']
+             )
+
+#calculate the absolute difference
+val_col <- val_col - globalavg_results$mean_npd[globalavg_results$discount.rate=='2.0% Ramsey']
+
+plot_data <- data.frame(group_col, subgroup_col, val_col)
+
+p1 <- plot_data %>%
+  mutate(subgroup_col = (fct_relevel(subgroup_col, '7.0% CDR','3.0% CDR',
+                                     "2.0% CDR","7.0% Ramsey", "3.0% Ramsey",
+                                     "2.5% Ramsey","1.5% Ramsey",
+                                     "GISS","CESM",
+                                     'Emis/Clim. Upper','Emis/Clim. Lower',
+                                     "SocioEcon. Lower","SocioEcon. Upper",
+                                     "CRF Lower","CRF Upper"
+                                     ))) %>%
+  ggplot( aes(x=(subgroup_col), y=(val_col),fill=group_col))+
+  geom_bar(stat='identity',width = 0.4)+
+  #scale_fill_brewer() (palette = 'Spectral',direction=-1)+
+  scale_fill_manual(name = '',values=c(brewer.pal(11,"Spectral")[c(2,4,8,10,11)]),
+  breaks= c('CRF (95% CI)','Socioeconomics (95% CI)','Clim/Emis. (95% CI)','GCM (mean)','Discount Rate (mean)'))+
+  coord_flip()+
+  theme_minimal()+
+  xlab('')+
+  ylab("Change in Global -$7.8(2020)/mT" ~CO[2])+
+  theme(axis.text = element_text(size=16),
+        axis.title = element_text(size=16))+
+  scale_y_continuous(limits = c(-65, 65),label = scales::dollar)+
+  theme(legend.position = c(0.8,0.80),
+        legend.title=element_text(size=12), 
+        legend.text=element_text(size=12))
+
+p1
+
+ggsave(plot = p1, filename = 
+         file.path(Plots,'Fig6.png'),width = 10,height = 5)
+
 ```
 
 

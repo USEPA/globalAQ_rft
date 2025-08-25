@@ -3,7 +3,7 @@
 ###           into temperature-specific impact functions, by country
 ### Created by: Melanie Jackson, IEc, edited by E. McDuffie, OAP/EPA
 ### Date Created: 2/4/2025
-### Last Edited: 4/4/2025
+### Last Edited: 8/25/2025
 ##      Inputs:
 ##        - Country level results for each model and pollutant of 2095
 ##        - SSP temperature crosswalk
