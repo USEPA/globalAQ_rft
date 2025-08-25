@@ -175,7 +175,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                          group_by(year) %>%  #average across all trials for each country and year
                          summarize(Temperature=mean(temp_C_global)) %>%
                          ungroup() 
-                       #Temps.b['Temperature'] = 4 #calculate results for 2C of warming. 
+                       #Temps.b['Temperature'] = 2 #calculate results for 2C of warming. 
                        Temps.p <- RFFTemps_perturbed %>%
                          group_by(year) %>%  #average across all trials for each country and year
                          summarize(Temperature=mean(temp_C_global)) %>%
@@ -373,7 +373,7 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                      #1. Calculate reference vsl
                      usa_base_income <- Impact_Results.b %>%
                        filter(LocID == 840,           #USA 
-                              year == 2020,
+                              year == 2024,
                               Pollutant == "O3", Model == "GISS") %>% # this filter doesn't change results, just produces 1 output instead of 4
                        select(gdp_per_cap) %>%
                        rename(base_income = gdp_per_cap)
