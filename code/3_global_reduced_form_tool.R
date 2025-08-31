@@ -67,7 +67,8 @@ lags                = c(6, 2.5, 2.5, 2.5, 2.5, 4/15, 4/15, 4/15, 4/15,4/15, 4/15
 # The user is asked to specify a specific RFF-SP trajectory Number, OR
 # specify 'ALL' to calculate the mortality estimates for all 10,000 trajectories
 # OR specify 'mean' to run the model for the mean across the temperature and population
-RFF_TrajNumber = 'mean'  #Options: numerical value 1-10000, or 'All', or 'mean'
+RFF_TrajNumber = 'All'  #Options: numerical value 1-10000, or 'All', or 'mean'
+RFF_var = 'all' #Option: 'all', 'temp_only', 'pop_only'; select whether to calculate results based on co-varying pop and temp or only temp or only pop
 
 # Implement cessation lags (1 = yes, 0 = no (default=1))
 cessation_flag = 1 #if set to 1, with calculate results with and without lag
@@ -113,7 +114,13 @@ RFFTemps_perturbed <- read_parquet(file.path(Inputs,"RFF","rft_inputs","global_m
 # 2) Set the trajectory numbers for the user-defined scenario
 if (RFF_TrajNumber == 'All') {
   Trajectory = SampleIDs$x
-  message("Running all 10,000 projections")
+  if (RFF_var == 'all') {
+    message("Running all 10,000 projections with both temperature and population changes")
+  } else if (RFF_var == 'temp_only') {
+    message("Running all 10,000 projections with temperature changes and average population")
+  } else if (RFF_var == 'pop_only') {
+    message("Running all 10,000 projections with average temperature, and population changes")
+  }
 } else if (RFF_TrajNumber == 'mean') {
   Trajectory =1 #will trigger mean data in main loop
   message("Running mean of 10,000 projections")
@@ -142,6 +149,26 @@ ptm   <- proc.time(); time1 <- Sys.time()
 ## start parallel (use this to specify the start file [if simulation is disrupted])
 startFile = 1
 
+#calculate means outside of loop
+mean_socio <- pop_gdp_file %>%
+  mutate(gdp_per_cap = gdp/pop) %>%
+  group_by_at(.vars = c('Year','Country')) %>% #mean across trials for each country and year
+  summarise_at(.vars = c('gdp_per_cap','pop','gdp'), mean) %>%
+  ungroup()
+mean_baseline <- BaselineMort %>%
+  group_by(LocID,Year) %>% #average across all trials for each country and year
+  summarize(Resp_BaseMort=mean(Resp_BaseMort),
+            NCD_LRI_BaseMort=mean(NCD_LRI_BaseMort)) %>%
+  ungroup()
+mean_tempb <- RFFTemps_baseline %>%
+  group_by(year) %>%  #average across all trials for each country and year
+  summarize(Temperature=mean(temp_C_global)) %>%
+  ungroup()
+mean_tempp <- RFFTemps_perturbed %>%
+  group_by(year) %>%  #average across all trials for each country and year
+  summarize(Temperature=mean(temp_C_global)) %>%
+  ungroup()
+  
 ####
 ##Begin Analysis ##
 ####
@@ -186,22 +213,47 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                        # while mortality has 10,000 projects from 1,000 unique samples.
                        # Therefore, gdp and temp are subset from the 10,000 trials while mortality is subset from the 1,000 samples
                        if(RFF_TrajNumber == 'All'){
+                         #changing population, baseline mortality, and temperature
+                         if (RFF_var == 'all') { 
                          pop_gdp_data <- pop_gdp_file[pop_gdp_file$trial==itrial,]
                          Temps.b <- RFFTemps_baseline[RFFTemps_baseline$trial==itrial,] %>%
                            rename("Temperature" = "temp_C_global") %>%
                            select(!trial)
-                         Temps.p <- RFFTemps_pertrubed[RFFTemps_pertrubed$trial==itrial,] %>%
+                         Temps.p <- RFFTemps_perturbed[RFFTemps_perturbed$trial==itrial,] %>%
                            rename("Temperature" = "temp_C_global") %>%
                            select(!trial)
+                         BaselineMort_data <- BaselineMort[BaselineMort$Trajectory==Trajectory[itrial],] #Trajectory is the sampleID that aligns with whichever trial/projection (RFF_TrajNumber) is selected
+                         
+                         #changing temperature, mean population and baseline mortality
+                         } else if (RFF_var == 'temp_only'){ 
+                           pop_gdp_data <- mean_socio
+                           Temps.b <- RFFTemps_baseline[RFFTemps_baseline$trial==itrial,] %>%
+                             rename("Temperature" = "temp_C_global") %>%
+                             select(!trial)
+                           Temps.p <- RFFTemps_perturbed[RFFTemps_perturbed$trial==itrial,] %>%
+                             rename("Temperature" = "temp_C_global") %>%
+                             select(!trial)
+                           BaselineMort_data <- mean_baseline
+                           
+                         #changing population and baseline mortality, mean temperature
+                         } else if (RFF_var == 'pop_only'){ 
+                           pop_gdp_data <- pop_gdp_file[pop_gdp_file$trial==itrial,]
+                           Temps.b <- mean_tempb
+                           Temps.p <- mean_tempp
+                           BaselineMort_data <- BaselineMort[BaselineMort$Trajectory==Trajectory[itrial],] #Trajectory is the sampleID that aligns with whichever trial/projection (RFF_TrajNumber) is selected
+                         }
+                      # pull data for single selecte trial
                        } else {
                          pop_gdp_data <- pop_gdp_file[pop_gdp_file$trial==RFF_TrajNumber,] #RFF_TrajNumber can be 1-10,000 projections/trials
                          Temps.b <- RFFTemps_baseline[RFFTemps_baseline$trial==RFF_TrajNumber,] %>%
                            rename("Temperature" = "temp_C_global") %>%
                            select(!trial)
-                         Temps.p <- RFFTemps_pertrubed[RFFTemps_pertrubed$trial==RFF_TrajNumber,] %>%
+                         Temps.p <- RFFTemps_perturbed[RFFTemps_perturbed$trial==RFF_TrajNumber,] %>%
                            rename("Temperature" = "temp_C_global") %>%
                            select(!trial)
+                         BaselineMort_data <- BaselineMort[BaselineMort$Trajectory==Trajectory[itrial],] #Trajectory is the sampleID that aligns with whichever trial/projection (RFF_TrajNumber) is selected
                        }
+                       # finish formatting the pop/gdp data
                        pop_gdp_data <- right_join(countries,pop_gdp_data, by= c("RFF_iso_code"="Country"),multiple='all')
                        pop_gdp_data <- pop_gdp_data %>% 
                          select(COL,Year,pop,gdp) %>%
@@ -213,7 +265,6 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                                 pop = approx(x=Year,y=pop,xout=2020:endYear, rule=2)$y,
                                 gdp = approx(x=Year,y=gdp,xout=2020:endYear, rule=2)$y)
                        
-                       BaselineMort_data <- BaselineMort[BaselineMort$Trajectory==Trajectory[itrial],] #Trajectory is the sampleID that aligns with whichever trial/projection (RFF_TrajNumber) is selected
                      }
                      
                      # 2) Use the Impact functions (change in deaths per baseline mortality per temperature change) to calculate
@@ -462,8 +513,16 @@ Results <- foreach(itrial = startFile:length(Trajectory),
                          write_parquet(file.path(Outputs,paste0('damages_mean_rft.parquet'))) %>%
                          write.csv(file.path(Outputs,paste0('damages_mean_rft.csv')),row.names=F)
                      } else {
+                       if (RFF_var == 'all'){
                        results_i %>% 
                          write_parquet(file.path(Outputs,paste0('damages_',itrial,'_rft.parquet')))
+                       } else if (RFF_var == 'temp_only'){
+                         results_i %>% 
+                           write_parquet(file.path(Outputs,paste0('damages_',itrial,'_temp_only_rft.parquet')))
+                       } else if (RFF_var == 'pop_only'){
+                         results_i %>% 
+                           write_parquet(file.path(Outputs,paste0('damages_',itrial,'_pop_only_rft.parquet')))
+                       }
                      }
                      
                      rm()
@@ -477,21 +536,171 @@ proc.time() - ptm
 #  parallel::stopCluster(cl = my.cluster)
 
 
-## print mean baseline 2100 results
-filter_results <- Impact_Results.b %>% 
-  filter(year ==2100) %>%
-  group_by_at(.vars = c('Country','Pollutant')) %>% #mean across models
-  summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), mean) %>%
-  ungroup()
-print('Global PM Results: ')
-print(filter_results %>% filter(Pollutant == 'PM') %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
-print('Global Ozone Results: ')
-print(filter_results %>% filter(Pollutant == 'Ozone') %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
-print('Global Net Results: ')
-print(filter_results %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
+## print baseline 2100 results
+if (RFF_TrajNumber == 'mean') {
+  filter_results <- Impact_Results.b %>% 
+    filter(year ==2100) %>%
+    group_by_at(.vars = c('Country','Pollutant')) %>% #mean across models
+    summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), mean) %>%
+    ungroup() #%>%
+    #filter(Model == 'CESM2')
+  print('Global PM Results: ')
+  print(filter_results %>% filter(Pollutant == 'PM') %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
+  print('Global Ozone Results: ')
+  print(filter_results %>% filter(Pollutant == 'Ozone') %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
+  print('Global Net Results: ')
+  print(filter_results %>% summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum))
 
-Net_Avg_Impacts.b <- filter_results %>%
-  group_by_at(.vars = c('Country')) %>% #sum across pollutants
-  summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum) %>%
-  ungroup()
+  Net_Avg_Impacts.b <- filter_results %>%
+    group_by_at(.vars = c('Country')) %>% #sum across pollutants
+    summarise_at(.vars = c('Deaths','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum) %>%
+    ungroup()
+} else if (RFF_TrajNumber == 'All'){
+  read_rft = 
+    function(x){
+      ttemp <- 
+        read_parquet(x) %>%
+        filter(damageType == 'Baseline',
+               year ==2100) %>%
+        na.omit() %>%
+        select(c('year','Country','Pollutant','Model','Deaths','Annual_impacts','trial','damageType')) %>%
+        group_by_at(c('year','Pollutant', 'Model','trial','Country')) %>% # sum across all countries
+        pivot_wider(id_cols = c(year,Country,Pollutant,Model,trial),
+                    names_from  = damageType, 
+                    values_from = c("Deaths","Annual_impacts"),
+                    values_fill = NA) %>%
+        summarise(deaths.baseline = sum(Deaths_Baseline),
+                  damages.baseline = sum(Annual_impacts_Baseline),
+                  .groups='keep') %>%
+        ungroup() #%>%
+    }
+  
+  if (RFF_var == 'all'){
+    damages = 
+      list.files(Outputs, pattern = "damages_\\d+\\_rft*", full.names = T) %>% 
+      map_df(~read_rft(.))
+  } else if (RFF_var == 'temp_only') {
+    damages = 
+      list.files(Outputs, pattern = "damages_\\d+\\_temp_only_rft*", full.names = T) %>% 
+      map_df(~read_rft(.))
+  } else if (RFF_var == 'pop_only'){
+    damages = 
+      list.files(Outputs, pattern = "damages_\\d+\\_pop_only_rft*", full.names = T) %>% 
+      map_df(~read_rft(.))
+  }
+  
+  damages_glob <- damages %>%
+    group_by_at(.vars = c('Pollutant','Model','trial')) %>% #statistics across countries
+    summarise(Deaths_glob = sum(deaths.baseline),
+              Damages_glob = sum(damages.baseline))
+  
+  country_component <- damages %>%
+    group_by_at(.vars = c('Pollutant','Country','Model')) %>% #statistics across trials
+    summarise(Deaths_mean = mean(deaths.baseline),
+              Deaths_25 = quantile(deaths.baseline, .025, na.rm = T),
+              Deaths_975 = quantile(deaths.baseline, .975, na.rm = T),
+              Annual_impacts_mean = mean(damages.baseline),
+              Annual_impacts_25 = quantile(damages.baseline, .025, na.rm = T),
+              Annual_impacts_975 = quantile(damages.baseline, .975, na.rm = T)) %>%
+    ungroup() %>%
+    group_by_at(.vars = c('Pollutant','Country')) %>% #average across models
+    summarise(Deaths_model_mean = mean(Deaths_mean), #statistics on net results
+              Deaths_model_25 = mean(Deaths_25),
+              Deaths_model_975 = mean(Deaths_975),
+              Annual_impacts_model_mean = mean(Annual_impacts_mean),
+              Annual_impacts_model_25 = mean(Annual_impacts_25),
+              Annual_impacts_model_975 = mean(Annual_impacts_975)) %>%
+    ungroup()
+    
+  country_net <- damages %>%
+    group_by_at(.vars = c('trial', 'Model','Country')) %>% #sum across pollutants %>%
+    summarise(net_deaths = sum(deaths.baseline),
+              net_damages = sum(damages.baseline)) %>%
+    ungroup %>%
+    group_by_at(.vars = c('Model','Country')) %>% #average across trials %>%
+    summarise(Deaths_mean = mean(net_deaths), #statistics on net results
+              Deaths_25 = quantile(net_deaths, .025, na.rm = T),
+              Deaths_975 = quantile(net_deaths, .975, na.rm = T),
+              Annual_impacts_mean = mean(net_damages),
+              Annual_impacts_25 = quantile(net_damages, .025, na.rm = T),
+              Annual_impacts_975 = quantile(net_damages, .975, na.rm = T)) %>%
+    ungroup() %>%
+    group_by_at(.vars = c('Country')) %>% #average across models
+    summarise(Deaths_model_mean = mean(Deaths_mean), 
+              Deaths_model_25 = mean(Deaths_25),
+              Deaths_model_975 = mean(Deaths_975),
+              Annual_impacts_model_mean = mean(Annual_impacts_mean),
+              Annual_impacts_model_25 = mean(Annual_impacts_25),
+              Annual_impacts_model_975 = mean(Annual_impacts_975)) %>%
+    ungroup()
+              
+  
+  filter_results <- damages_glob %>% 
+    #filter(Model == 'GISS') %>%
+    group_by_at(.vars = c('Pollutant','Model')) %>% #statistics across trials
+    summarise(Deaths_mean = mean(Deaths_glob),
+              Deaths_25 = quantile(Deaths_glob, .025, na.rm = T),
+              Deaths_975 = quantile(Deaths_glob, .975, na.rm = T),
+              Annual_impacts_mean = mean(Damages_glob),
+              Annual_impacts_25 = quantile(Damages_glob, .025, na.rm = T),
+              Annual_impacts_975 = quantile(Damages_glob, .975, na.rm = T)) %>%
+    ungroup() %>%
+    group_by_at(.vars = c('Pollutant')) %>% #average across models
+    summarise(Deaths_model_mean = mean(Deaths_mean), #statistics on net results
+              Deaths_model_25 = mean(Deaths_25),
+              Deaths_model_975 = mean(Deaths_975),
+              Annual_impacts_model_mean = mean(Annual_impacts_mean),
+              Annual_impacts_model_25 = mean(Annual_impacts_25),
+              Annual_impacts_model_975 = mean(Annual_impacts_975)) %>%
+    ungroup()
+  print('Global PM Results: ')
+  print(filter_results %>% filter(Pollutant == 'PM') %>% summarise_at(.vars = c('Deaths_model_mean','Deaths_model_25','Deaths_model_975','Annual_impacts_model_mean','Annual_impacts_model_25','Annual_impacts_model_975'), sum))
+  print('Global Ozone Results: ')
+  print(filter_results %>% filter(Pollutant == 'Ozone') %>% summarise_at(.vars = c('Deaths_model_mean','Deaths_model_25','Deaths_model_975','Annual_impacts_model_mean','Annual_impacts_model_25','Annual_impacts_model_975'), sum))
+  
+  Net_impacts <- damages_glob %>%
+    #filter(Model == 'GISS') %>%
+    group_by_at(.vars = c('trial', 'Model')) %>% #sum across pollutants %>%
+    summarise(net_deaths = sum(Deaths_glob),
+              net_damages = sum(Damages_glob)) %>%
+    ungroup %>%
+    group_by_at(.vars = c('Model')) %>% #average across trials %>%
+    summarise(Deaths_mean = mean(net_deaths), #statistics on net results
+              Deaths_25 = quantile(net_deaths, .025, na.rm = T),
+              Deaths_975 = quantile(net_deaths, .975, na.rm = T),
+              Annual_impacts_mean = mean(net_damages),
+              Annual_impacts_25 = quantile(net_damages, .025, na.rm = T),
+              Annual_impacts_975 = quantile(net_damages, .975, na.rm = T)) %>%
+    ungroup() %>%
+    summarise(Deaths_model_mean = mean(Deaths_mean), #average across models
+              Deaths_model_25 = mean(Deaths_25),
+              Deaths_model_975 = mean(Deaths_975),
+              Annual_impacts_model_mean = mean(Annual_impacts_mean),
+              Annual_impacts_model_25 = mean(Annual_impacts_25),
+              Annual_impacts_model_975 = mean(Annual_impacts_975)) %>%
+    ungroup #%>%
+  print('Global Net Results: ')
+  print(Net_impacts %>% summarise_at(.vars = c('Deaths_model_mean','Deaths_model_25','Deaths_model_975','Annual_impacts_model_mean','Annual_impacts_model_25','Annual_impacts_model_975'), sum))
+  
+  
+  #  summarise_at(.vars = c('Deaths_mean','Deaths_2_5','Deaths_97_5','Annual_impacts','Annual_impacts_2_5','Annual_impacts_97_5'), sum) %>%
+  #  ungroup()
+  
+  if (RFF_var == 'all'){
+    filter_results %>% write_parquet(file.path(Outputs,paste0('rff_damage_statistics_global_rft.parquet')))
+    damages_glob %>% write_parquet(file.path(Outputs,paste0('rff_damage_alltrials_global_rft.parquet')))
+    country_component %>% write_parquet(file.path(Outputs,paste0('rff_damage_statistics_country_rft.parquet')))
+    damages %>% write_parquet(file.path(Outputs,paste0('rff_damage_alltrials_country_rft.parquet')))
+  } else if (RFF_var == 'temp_only') {
+    filter_results %>% write_parquet(file.path(Outputs,paste0('rff_damage_statistics_temponly_global_rft.parquet')))
+    damages_glob %>% write_parquet(file.path(Outputs,paste0('rff_damage_alltrials_temponly_global_rft.parquet')))
+    country_component %>% write_parquet(file.path(Outputs,paste0('rff_damage_statistics_temponly_country_rft.parquet')))
+    damages %>% write_parquet(file.path(Outputs,paste0('rff_damage_alltrials_temponly_country_rft.parquet')))
+  } else if (RFF_var == 'pop_only') {
+    filter_results %>% write_parquet(file.path(Outputs,paste0('rff_damage_statistics_poponly_global_rft.parquet')))
+    damages_glob %>% write_parquet(file.path(Outputs,paste0('rff_damage_alltrials_poponly_global_rft.parquet')))
+    country_component %>% write_parquet(file.path(Outputs,paste0('rff_damage_statistics_poponly_country_rft.parquet')))
+    damages %>% write_parquet(file.path(Outputs,paste0('rff_damage_alltrials_poponly_country_rft.parquet')))
+  }
+}
 # Code Complete. Discounting of annual damages done in Code file #4    

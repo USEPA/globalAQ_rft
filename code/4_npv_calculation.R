@@ -7,7 +7,7 @@
 ##                the end to help reduce the memory usage when processing all 10,000 RFF scenarios
 ### Written by:   US EPA, Climate Change Division (OAP) 
 ### Date Created: 3/15/2023      
-### Last Edited:  4/4/2025 - Melanie Jackson, IEc, E. McDuffie (OAP)
+### Last Edited:  8/29/2025 - Melanie Jackson, IEc, E. McDuffie (OAP)
 ##      Inputs:                                                                       ##
 ##        -damages_mean_X_rft.parquet                                                 ##
 ##        -Final Country Grid Col_Row Index.csv                                       ##
@@ -42,7 +42,7 @@ Inputs  <- file.path("input")
 Inputs.RFT <- file.path("output","rft")
 Outputs <- file.path("output","npd")
 
-allRFF = 'mean' #(set to 1 if reading in all RFF scenario, otherwise read in mean)
+allRFF = '1' #(set to 1 if reading in all RFF scenario, otherwise read in mean)
 PULSEYEAR = 2030
 
 countries <- read.csv(file.path(Inputs,"Final Country Grid Col_Row Index.csv"))[,c(1,3:4,6,8)]
@@ -54,7 +54,7 @@ read_rft =
     read_parquet(x) %>%
       select(!contains("Deaths")) %>% #subset for monetary results only
       rename_with(~str_replace(.x,pattern="Annual_impacts",replacement = "damages")) %>%
-      group_by_at(c('year','LocID','Pollutant', 'Model','trial')) %>% # sum across all countries
+      group_by_at(c('year','LocID','Pollutant', 'Model','trial')) #%>% # sum across all countries
       pivot_wider(id_cols = c(year,LocID,Pollutant,Model,trial,pop,gdp,Country,Region),
                   names_from  = damageType, 
                   values_from = c("damages", "damages_2_5", "damages_97_5", "damages_wlag","damages_wlag_2_5", "damages_wlag_97_5",'Temperature'),
@@ -80,12 +80,35 @@ read_rft =
            ungroup() #%>%
   }
 
+read_rff_rft = 
+  function(x){
+    ttemp <- 
+      read_parquet(x) %>%
+      select(!contains("Deaths")) %>% #subset for monetary results only
+      rename_with(~str_replace(.x,pattern="Annual_impacts",replacement = "damages")) %>%
+      group_by_at(c('year','LocID','Pollutant', 'Model','trial')) %>% # sum across all countries
+    pivot_wider(id_cols = c(year,LocID,Pollutant,Model,trial,pop,gdp,Country,Region),
+                names_from  = damageType, 
+                values_from = c("damages",'Temperature'),
+                values_fill = NA) %>%
+      summarise(damages.baseline = sum(damages_Baseline),
+                damages.perturbed = sum(damages_Perturbed),
+                pop = sum(pop),
+                gdp = sum(gdp), 
+                temp_perturbed = mean(Temperature_Perturbed),
+                temp_baseline = mean(Temperature_Baseline),
+                .groups='keep') %>%
+      drop_na() %>%
+      ungroup() #%>%
+  }
+
 
 if (allRFF==1){
     # To read all files:
+    NAME = '1_500'
     damages = 
-      list.files(Inputs.RFT, pattern = "damages_\\d+\\_*", full.names = T) %>% 
-      map_df(~read_rft(.))
+      list.files(Inputs.RFT, pattern = "damages_\\d+\\_rft.*", full.names = T)[1:500] %>% 
+      map_df(~read_rff_rft(.))
 } else {
     # to read specific file:
     damages =
@@ -97,8 +120,20 @@ countries <- damages %>% ungroup() %>% distinct(LocID)
 #damages are calculated as a function of GDP (growth is corrected for damages)
 # calculate percent of GDP that are damages
 vars.damages <- names(damages)[grep("damages",names(damages))]
-  
-damages      <- damages %>%
+
+if (allRFF==1){
+  damages      <- damages %>%
+    group_by(trial,LocID,Pollutant,Model) %>%
+    mutate(across(all_of(vars.damages),  ~ 1 - (1/(1+(./gdp))), .names="{.col}_pct"), # fraction of GDP that are impacts
+           across(all_of(vars.damages),  ~ (get(paste0(cur_column(),"_pct")) * gdp), .names="{.col}_cor"),   #calculate the corrected level of damages
+           damages.marginal              = (damages.perturbed_cor-damages.baseline_cor) * (12/44) * (1e-9), #convert FaIR's GtC to tCO2
+           ypc                           = ((1-damages.baseline_pct) * gdp)/pop,
+           base.ypc                      = case_when(year==PULSEYEAR ~ypc, T ~0),
+           base.ypc                      = max(base.ypc)
+    ) %>%
+    select(-c(contains('pct'), contains('cor')))
+} else {
+  damages      <- damages %>%
     group_by(trial,LocID,Pollutant,Model) %>%
     mutate(across(all_of(vars.damages),  ~ 1 - (1/(1+(./gdp))), .names="{.col}_pct"), # fraction of GDP that are impacts
            across(all_of(vars.damages),  ~ (get(paste0(cur_column(),"_pct")) * gdp), .names="{.col}_cor"),   #calculate the corrected level of damages
@@ -129,7 +164,11 @@ damages      <- damages %>%
            base_97.5.ypc_wlag             = max(base_97.5.ypc_wlag)
              ) %>%
     select(-c(contains('pct'), contains('cor')))
+}
   
+###SET
+NAME = '501_1000'
+damages <- read_parquet(file.path(Outputs,'damages_501_1000.parquet'))
 
   ## discount rates
   ## Using stochastic Ramsey discount rate calculation, following Rennert et al., 2022
@@ -145,6 +184,7 @@ for (COUNTRY in 1:nrow(countries)) {
   data = tibble()
   # object to store data
   means = tibble()
+  net_means = tibble()
     
   print(COUNTRY)
     
@@ -158,8 +198,27 @@ for (COUNTRY in 1:nrow(countries)) {
     ## code calculates a stochastic Ramsey discount factor due to the discrete time nature of the results
     ## More info in Rennert et al., 2022
     ## get streams of discounted damages and net present damages
-    data = 
-      bind_rows(
+    if (allRFF==1){
+      data = 
+        bind_rows(
+          data,
+          damages %>%
+            filter(year >= PULSEYEAR) %>%
+            filter(LocID == countries$LocID[COUNTRY]) %>%
+            group_by(trial,LocID,Pollutant,Model) %>% 
+            mutate(discount.rate                    = rate,
+                   discount.factor                  = case_when(grepl("Ramsey",rate) ~ (base.ypc/ypc)^eta/(1+rho)^(year-PULSEYEAR),
+                                                                T ~ 1/(1+rho)^(year-PULSEYEAR)),
+                   damages.marginal.discounted          = damages.marginal * discount.factor,
+                   npd                                  = sum(damages.marginal.discounted, na.rm=F),
+                   cert.eq.adj                          = case_when(grepl("Ramsey", rate) ~ (base.ypc^-eta)/mean(base.ypc^-eta, na.rm = T),
+                                                                    T ~ 1)
+            ) %>%
+            ungroup()
+        )
+    } else {
+      data = 
+        bind_rows(
         data,
         damages %>%
           filter(year >= PULSEYEAR) %>%
@@ -205,7 +264,7 @@ for (COUNTRY in 1:nrow(countries)) {
                  ) %>%
           ungroup()
     )
-  
+    }
   }
   
   ## export full streams
@@ -220,6 +279,38 @@ for (COUNTRY in 1:nrow(countries)) {
 
   # recover summary statistics across all trials
   # Note that the stats and certainty equivalent corrections are only relevant when model is run for all trials (not the mean RFF-SP)
+  if (allRFF ==1){
+    means =
+      bind_rows(
+        means,
+        data %>%
+          filter(year == PULSEYEAR) %>%
+          group_by(LocID,discount.rate,Pollutant,Model) %>% #calculate statistics for each country, discount rate, pollutant and model
+          summarise(mean_npd         = mean(npd),
+                    mean.npd.cert.eq = mean(npd * cert.eq.adj, na.rm = T),
+                    npd_2.5          = quantile(npd, .025, na.rm = T), #these uncertainties are socioeconomic uncertainties (not BenMAP) - but only when results are run for all RFF-SPs (not just the mean)
+                    npd_97.5         = quantile(npd, .975, na.rm = T),
+                    median           = median(npd, na.rm = T),
+                    .groups = 'drop'))
+    net_means = 
+      bind_rows(
+        net_means,
+        data %>%
+          filter(year == PULSEYEAR) %>% #npds are the same for each year
+          group_by(LocID,discount.rate,trial,Model) %>% #sum across pollutants
+          summarise(net_npd         = sum(npd),
+                    cert.eq.adj     = mean(cert.eq.adj),
+                    .groups = 'drop') %>%
+          ungroup() %>%
+          group_by(LocID,discount.rate,Model) %>% #calculate statistics for each country, discount rate, and model
+          summarise(mean_npd         = mean(net_npd),
+                    mean.npd.cert.eq = mean(net_npd * cert.eq.adj, na.rm = T),
+                    npd_2.5          = quantile(net_npd, .025, na.rm = T), #these uncertainties are socioeconomic uncertainties (not BenMAP) - but only when results are run for all RFF-SPs (not just the mean)
+                    npd_97.5         = quantile(net_npd, .975, na.rm = T),
+                    median           = median(net_npd, na.rm = T),
+                    .groups = 'drop')
+        )
+  } else {
   means =
     bind_rows(
       means,
@@ -258,11 +349,13 @@ for (COUNTRY in 1:nrow(countries)) {
                   median_wlag_crf_97.5      = median(npd_crf_97.5_wlag, na.rm = T),
                   .groups = 'drop'))
 
-
+  }
   ## export summary stats
   if (allRFF ==1){
     means %>%
       write_csv(file.path(Outputs,paste0('npd_country_rff_means_',countries$LocID[COUNTRY],'.csv')))
+    net_means %>%
+      write_csv(file.path(Outputs,paste0('npd_country_rff_net_means_',countries$LocID[COUNTRY],'.csv')))
   } else {
     means %>%
       write_csv(file.path(Outputs,paste0('npd_country_means_',countries$LocID[COUNTRY],'.csv')))
@@ -279,11 +372,24 @@ read_results = function(x){
       filter(year == PULSEYEAR) #%>% #all npd years are the same
 }
 
+read_net_results = function(x){
+  ttemp <- 
+    read_parquet(x) %>%
+    filter(year == PULSEYEAR) %>% #all npd years are the same
+    group_by(LocID,discount.rate,trial,Model) %>% #sum across pollutants
+    summarise(net_npd         = sum(npd),
+              cert.eq.adj     = mean(cert.eq.adj),
+              .groups = 'drop') 
+}
+
 
 if (allRFF ==1){
   Results_comb = 
     list.files(Outputs, pattern = paste0("npd_full_streams_rff_"),full.names = T) %>% 
     map_df(~read_results(.))
+  Results_comb_net = 
+    list.files(Outputs, pattern = paste0("npd_full_streams_rff_"),full.names = T) %>% 
+    map_df(~read_net_results(.))
 } else {
   Results_comb = 
     list.files(Outputs, pattern = paste0("npd_full_streams_"),full.names = T) %>% 
@@ -293,7 +399,9 @@ if (allRFF ==1){
 #  #write sum of country data
 if (allRFF ==1){
   Results_comb %>%
-    write_csv(file.path(Outputs,paste0('npd_all_country_rff_means.csv')))
+    write_csv(file.path(Outputs,paste0('npd_all_country_rff_means_',NAME,'.csv')))
+  Results_comb_net %>%
+    write_csv(file.path(Outputs,paste0('npd_all_country_net_rff_means_',NAME,'.csv')))
 } else {
   Results_comb %>%
     write_csv(file.path(Outputs,paste0('npd_all_country_means.csv')))
@@ -302,7 +410,48 @@ if (allRFF ==1){
 
 #export global stats
 glob_means = tibble()
+glob_net_means = tibble()
+
 # Note that the stats and certainty equivalent corrections are only relevant when model is run for all trials (not the mean RFF-SP)
+if (allRFF ==1){  
+  glob_means =
+    bind_rows(
+      glob_means,
+      Results_comb %>%
+        group_by(discount.rate,trial,Pollutant,Model) %>% #group by rate, trial, pollutant, and model, and then sum across all countries
+        summarise(
+          npd.cert.eq = sum(npd * cert.eq.adj, na.rm = T),
+          npd      = sum(npd),
+          .groups = 'keep') %>%
+        ungroup() %>%
+        group_by(discount.rate,Pollutant,Model) %>% #next, group by discount rate, pollutant, and model to calculate stats across all trials
+        summarise(mean_npd      = mean(npd),
+                  mean.npd.cert.eq = mean(npd.cert.eq),
+                  npd_2.5       = quantile(npd, .025, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+                  npd_97.5      = quantile(npd, .975, na.rm = T),
+                  median        = median(npd, na.rm = T),
+                  .groups = 'keep')
+    )
+  glob_net_means =
+    bind_rows(
+      glob_net_means,
+      Results_comb_net %>%
+        group_by(discount.rate,trial,Model) %>% #group by rate, trial, and model, and then sum across all countries
+        summarise(
+          npd.cert.eq = sum(net_npd * cert.eq.adj, na.rm = T),
+          npd      = sum(net_npd),
+          .groups = 'keep') %>%
+        ungroup() %>%
+        group_by(discount.rate,Model) %>% #next, group by discount rate and model to calculate stats across all trials
+        summarise(mean_npd      = mean(npd),
+                  mean.npd.cert.eq = mean(npd.cert.eq),
+                  npd_2.5       = quantile(npd, .025, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+                  npd_97.5      = quantile(npd, .975, na.rm = T),
+                  median        = median(npd, na.rm = T),
+                  .groups = 'keep')
+    )
+  
+  } else {
   glob_means =
       bind_rows(
         glob_means,
@@ -358,11 +507,14 @@ glob_means = tibble()
                   median_wlag_97.5   = median(npd_crf_97.5_wlag, na.rm = T),
                     .groups = 'keep')
   )
+  }
 # #
 #  #write data
 if (allRFF ==1){
-    glob_means %>%
-      write_csv(file.path(Outputs,paste0('npd_global_rff_means.csv')))
+  glob_means %>%
+      write_csv(file.path(Outputs,paste0('npd_global_rff_means_',NAME,'.csv')))
+  glob_net_means %>%
+    write_csv(file.path(Outputs,paste0('npd_global_rff_net_means_',NAME,'.csv')))
 } else {
     glob_means %>%
       write_csv(file.path(Outputs,paste0('npd_global_means.csv')))
