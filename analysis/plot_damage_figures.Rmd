@@ -361,45 +361,146 @@ p_list
 #Figure 5 - bar chart of NPD values by region
 ```{r, damagesbar}
 
-Plots <- file.path(getwd(),'analysis','Plots')
-inputs <- file.path(getwd(),'output','npd')
-input2 <- file.path(getwd(),'analysis','data')
+#Plots <- file.path(getwd(),'analysis','Plots')
+#inputs <- file.path(getwd(),'output','npd')
+#input2 <- file.path(getwd(),'analysis','data')
+quant_high = 1-(.25/2)  #90th percentile
+quant_low = 0.25/2
 
 Ctry.Name<-read.csv(file.path(input2,'Final Country Grid Col_Row Index.csv'))
 
-countryresults <-
-   read_csv(file.path(inputs,"npd_all_country_means.csv"),
+#Read in Net Results (to be added to pollutant results later)
+countryresults_net <-
+  read_csv(file.path(inputs,"npd_all_country_net_rff_means_1_500.csv"),
            col_types = cols()) %>%
-  left_join(Ctry.Name, by=c('LocID'='COL'))
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_501_1000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_1001_2000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_2001_3000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_3001_4000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_4001_5000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_5001_6000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_6001_7000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_7001_8000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_8001_9000.csv"),
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_net_rff_means_9001_10000.csv"),
+           col_types = cols())) %>%
+  left_join(Ctry.Name, by=c('LocID'='COL')) %>%
+  distinct()
+
+country_net_temp <- countryresults_net %>%
+  group_by_at(.vars = c('Model','discount.rate','trial','SuperRegion')) %>% #sum across super region for every trial and discount rate
+  summarise_at(c('net_npd'),sum,na.rm=T) %>%
+  ungroup() %>%
+  group_by_at(.vars = c('SuperRegion','trial','discount.rate')) %>%
+  summarise_at(c('net_npd'),mean,na.rm=T) %>%#avg models
+  ungroup()%>%
+  group_by_at(.vars = c('SuperRegion','discount.rate')) %>% #calculate stats across trials
+  summarise(mean_npd      = mean(net_npd),
+            npd_2.5       = quantile(net_npd, quant_low, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+            npd_97.5      = quantile(net_npd, quant_high, na.rm = T),
+            median        = median(net_npd, na.rm = T),
+            .groups = 'drop') %>%
+  ungroup() %>%
+  mutate(Pollutant = 'Net')
+
+globalresults_net <-
+  countryresults_net %>%
+  group_by_at(.vars = c('Model','discount.rate','trial')) %>% #sum across countries for all trials
+  summarise_at(c('net_npd'),sum,na.rm=T) %>%
+  ungroup() %>%
+  group_by_at(.vars = c('trial','discount.rate')) %>%
+  summarise_at(c('net_npd'),mean,na.rm=T) %>%#avg models
+  ungroup()%>%
+  group_by_at(.vars = c('discount.rate')) %>% #calculate stats across trials
+  summarise(mean_npd      = mean(net_npd),
+            npd_2.5       = quantile(net_npd, quant_low, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+            npd_97.5      = quantile(net_npd, quant_high, na.rm = T),
+            median        = median(net_npd, na.rm = T),
+            .groups = 'drop') %>%
+  arrange(desc(mean_npd)) %>%
+  mutate(SuperRegion = 'Global',
+         Pollutant = 'Net')%>%
+  filter(discount.rate %in% 
+           c('1.5% Ramsey', '2.0% Ramsey', '2.5% Ramsey', "3.0% Ramsey",'7.0% Ramsey', '2.0% CDR','3.0% CDR','7.0% CDR'))
+
+## Read in pollutant specific results
+countryresults <-
+   read_csv(file.path(inputs,"npd_all_country_rff_means_1_500.csv"), 
+           col_types = cols()) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_501_1000.csv"), 
+           col_types = cols())) %>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_1001_2000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_2001_3000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_3001_4000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_4001_5000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_5001_6000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_6001_7000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_7001_8000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_8001_9000.csv"), 
+           col_types = cols()))%>%
+  rbind(read_csv(file.path(inputs,"npd_all_country_rff_means_9001_10000.csv"), 
+           col_types = cols()))%>%
+  left_join(Ctry.Name, by=c('LocID'='COL'))%>%
+  distinct()
 
 globalresults <-
-  read_csv(file.path(inputs, "npd_global_means.csv"),
-           col_types = cols())
-
-globalresults <- 
-  globalresults  %>%
-  group_by_at(.vars = c('Model','Pollutant','discount.rate')) %>%
-  mutate(npd = mean_npd, 
-         npd_crf_2.5 = mean_npd_2.5,
-         npd_crf_97.5 = mean_npd_97.5) %>%
-  select(c(Model,discount.rate,Pollutant,npd, npd_crf_2.5, npd_crf_97.5)) %>%
-  arrange(desc(npd)) %>%
-  #filter(Model =='MMM') %>%
+  countryresults %>%
+  group_by_at(.vars = c('Model','discount.rate','Pollutant','trial')) %>% #sum across countries for all trials
+  summarise_at(c('npd'),sum,na.rm=T) %>%
+  ungroup() %>%
+  group_by_at(.vars = c('Pollutant','trial','discount.rate')) %>%
+  summarise_at(c('npd'),mean,na.rm=T) %>%#avg models
+  ungroup()%>%
+  group_by_at(.vars = c('Pollutant','discount.rate')) %>% #calculate stats
+  summarise(mean_npd      = mean(npd),
+            npd_2.5       = quantile(npd, quant_low, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+            npd_97.5      = quantile(npd, quant_high, na.rm = T),
+            median        = median(npd, na.rm = T),
+            .groups = 'drop') %>%
+  arrange(desc(mean_npd)) %>%
   mutate(SuperRegion = 'Global')%>%
   filter(discount.rate %in% 
            c('1.5% Ramsey', '2.0% Ramsey', '2.5% Ramsey', "3.0% Ramsey",'7.0% Ramsey', '2.0% CDR','3.0% CDR','7.0% CDR'))
 
+
+### combine all pollutant and net results
 cResultslong <- countryresults %>%
-  group_by_at(.vars = c('Model','Pollutant','SuperRegion','discount.rate')) %>% #add pollutant
-  summarise_at(c('npd','npd_crf_2.5','npd_crf_97.5'),sum,na.rm=T) %>%
+  group_by_at(.vars = c('Model','trial','Pollutant','SuperRegion','discount.rate')) %>% #sum across superregion for each trial, pollutant, model, and discount rate
+  summarise_at(c('npd'),sum,na.rm=T) %>%
   ungroup() %>%
-  arrange(desc(npd)) %>%
-  #filter(Model =='MMM') #%>%
+  group_by_at(.vars = c('Pollutant','trial','SuperRegion','discount.rate')) %>%
+  summarise_at(c('npd'),mean,na.rm=T) %>%#avg models
+  ungroup()%>%
+  group_by_at(.vars = c('Pollutant','SuperRegion','discount.rate')) %>% #stats across trials
+  summarise(mean_npd      = mean(npd),
+            npd_2.5       = quantile(npd, quant_low, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+            npd_97.5      = quantile(npd, quant_high, na.rm = T),
+            median        = median(npd, na.rm = T),
+            .groups = 'drop') %>%
+  ungroup() %>%
+  arrange(desc(mean_npd)) %>%
   rbind(globalresults) %>%
-  #group_by_at(.vars = c('Model','SuperRegion','discount.rate')) %>%
-  #summarise_at(c('npd','npd_crf_2.5','npd_crf_97.5'),sum,na.rm=T) %>% #sum PM+O3
-  group_by_at(.vars = c('Pollutant','SuperRegion','discount.rate')) %>%
-  summarise_at(c('npd','npd_crf_2.5','npd_crf_97.5'),mean,na.rm=T) #avg models
+  rbind(globalresults_net) %>%
+  rbind(country_net_temp) %>%
+  #group_by_at(.vars = c('Pollutant','SuperRegion','discount.rate')) %>%
+  #summarise_at(c('mean_npd','npd_2.5','npd_97.5'),mean,na.rm=T) %>%#avg models
+  mutate(SuperRegion = str_replace_all(SuperRegion,"High Income", "High Income North America"))
 
 ## ordering of central rate for alpha transparency
 cResultslong$discount.rate <- factor(cResultslong$discount.rate, 
@@ -408,31 +509,55 @@ cResultslong$discount.rate <- factor(cResultslong$discount.rate,
                                           "2.5% Ramsey", 
                                           "2.0% Ramsey", "1.5% Ramsey" ))
 
+us_avg_net <- countryresults_net %>% 
+  filter(discount.rate=='2.0% Ramsey',LocID == 840) %>% 
+  group_by_at(.vars = c('trial')) %>% 
+  summarise_at(c('net_npd'),mean,na.rm=T) %>% #avg models
+  ungroup() %>% 
+  summarise(mean_npd      = mean(net_npd),
+            npd_2.5       = quantile(net_npd, quant_low, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+            npd_97.5      = quantile(net_npd, quant_high, na.rm = T),
+            median        = median(net_npd, na.rm = T),
+            .groups = 'drop') %>%
+  ungroup() 
+us_avg <- countryresults %>% 
+  filter(discount.rate=='2.0% Ramsey',LocID == 840) %>% 
+  group_by_at(.vars = c('trial','Pollutant')) %>% 
+  summarise_at(c('npd'),mean,na.rm=T) %>% #avg models
+  ungroup() %>% 
+  group_by_at(.vars = c('Pollutant')) %>% 
+  summarise(mean_npd      = mean(npd),
+            npd_2.5       = quantile(npd, quant_low, na.rm = T), #these are the socioeconomic stats (not BenMAP)
+            npd_97.5      = quantile(npd, quant_high, na.rm = T),
+            median        = median(npd, na.rm = T),
+            .groups = 'drop') %>%
+  ungroup() 
+
 ## function for labels
 means = cResultslong %>% 
   group_by_at(c('Pollutant','discount.rate','SuperRegion')) %>% 
-  summarise(means=npd) %>% 
+  summarise(means=mean_npd,.groups = 'drop') %>% 
   ungroup() %>%
   #mutate(across(c('means'), ~ signif(.,3))) %>%
   mutate(means = case_when( means >10 ~ signif(means,2), TRUE ~signif(means,1)))
 
 lower = cResultslong %>% 
   group_by_at(c('Pollutant','discount.rate','SuperRegion')) %>% 
-  summarise(means=npd_crf_2.5) %>% 
+  summarise(means=npd_2.5,.groups = 'drop') %>% 
   ungroup() %>%
   mutate(across(c('means'), ~ signif(.,2)))
 
 upper = cResultslong %>% 
   group_by_at(c('Pollutant','discount.rate','SuperRegion')) %>% 
-  summarise(means=npd_crf_97.5) %>% 
+  summarise(means=npd_97.5,.groups = 'drop') %>% 
   ungroup() %>%
   mutate(across(c('means'), ~ signif(.,2)))
 
     
   reg_i <- cResultslong %>% 
   group_by_at(.vars=c('Pollutant',"SuperRegion")) %>% 
-  summarize_at(.vars=c("npd"),sum,na.rm=T) %>%
-  ungroup %>% arrange((npd)) %>%
+  summarize_at(.vars=c("mean_npd"),sum,na.rm=T) %>%
+  ungroup %>% arrange((mean_npd)) %>%
   distinct(SuperRegion)
 
   cResultslong <- cResultslong %>% 
@@ -441,42 +566,42 @@ upper = cResultslong %>%
   
   # Figure S7
   
-  p1 <-  ggplot(cResultslong, aes(x=SuperRegion, y=npd))+
-        geom_linerange(aes(x=SuperRegion,ymin=npd_crf_2.5, ymax=npd_crf_97.5,group=discount.rate),
-                       color = 'lightgray',size=1,
-                       position = position_dodge(0.8))+
-        geom_point(aes(color = discount.rate), position = position_dodge(0.8),size=2)+
-        coord_flip()+
-        scale_color_brewer('Discount Rate',palette = 'Spectral',direction=-1)+
-        scale_x_discrete(labels = function(x) str_wrap(x,width=30))+
-        scale_y_continuous(limits=c(-50,100), label = scales::dollar)+
-        xlab("")+ylab("$(2020)/mT" ~CO[2])+
-        ggtitle(paste0('Net Present Damages per metric ton CO2 \nby GBD Super Region'))+
-        theme_minimal()+
-        theme(legend.position = c(0.7,0.4),
-              legend.title=element_text(size=16), 
-              legend.text=element_text(size=16))+
-        theme(axis.text = element_text(size=16),
-              axis.title = element_text(size=16))+
-        theme(plot.background = element_rect(fill = 'white'))
-  p1
+  # p1 <-  ggplot(cResultslong, aes(x=SuperRegion, y=npd))+
+  #       geom_linerange(aes(x=SuperRegion,ymin=npd_rff_2.5, ymax=npd_rff_97.5,group=discount.rate),
+  #                      color = 'lightgray',size=1,
+  #                      position = position_dodge(0.8))+
+  #       geom_point(aes(color = discount.rate), position = position_dodge(0.8),size=2)+
+  #       coord_flip()+
+  #       scale_color_brewer('Discount Rate',palette = 'Spectral',direction=-1)+
+  #       scale_x_discrete(labels = function(x) str_wrap(x,width=30))+
+  #       scale_y_continuous(limits=c(-50,100), label = scales::dollar)+
+  #       xlab("")+ylab("$(2020)/mT" ~CO[2])+
+  #       ggtitle(paste0('Net Present Damages per metric ton CO2 \nby GBD Super Region'))+
+  #       theme_minimal()+
+  #       theme(legend.position = c(0.7,0.4),
+  #             legend.title=element_text(size=16), 
+  #             legend.text=element_text(size=16))+
+  #       theme(axis.text = element_text(size=16),
+  #             axis.title = element_text(size=16))+
+  #       theme(plot.background = element_rect(fill = 'white'))
+  # p1
   
 # Figure 2c
 p2 <-  cResultslong %>%
         filter(discount.rate == '2.0% Ramsey') %>%
-        ggplot(aes(x=SuperRegion, y=npd,fill = Pollutant))+
+        ggplot(aes(x=SuperRegion, y=mean_npd,fill = Pollutant))+
         geom_bar(stat = 'identity', position = 'dodge',width=0.7)+
-        geom_pointrange(aes(x=SuperRegion,ymin=npd_crf_2.5, ymax=npd_crf_97.5),
+        geom_pointrange(aes(x=SuperRegion,ymin=npd_2.5, ymax=npd_97.5),
                         position =
                         position_dodge(width=0.65),
                         size=0.3,alpha=0.8)+#errobar,width = 0.4)+
         coord_flip()+
-        scale_fill_manual(values = c('purple','darkgreen'))+
+        scale_fill_manual(values = c('gray','purple','darkgreen'))+
         #scale_fill_brewer(palette = 'Spectral',direction=1)+
         scale_x_discrete(labels = function(x) str_wrap(x,width=30))+
-        scale_y_continuous(limits=c(-35,30), label = scales::dollar)+
-        xlab("")+ylab("$(2020)/mT" ~CO[2])+
-        ggtitle(paste0('Damages per metric ton CO2 \nby GBD Super Region (Model Average)'))+
+        scale_y_continuous(limits=c(-100,100), label = scales::dollar)+
+        xlab("")+ylab("$(2024)/mT" ~CO[2])+
+        ggtitle(paste0('Damages per metric ton \nby GBD Super Region (Model Average)'))+
         theme_minimal()+
         theme(legend.position = 'none')+#c(0.7,0.3))+
         theme(axis.text = element_text(size=16),
@@ -495,11 +620,12 @@ p2 <-  cResultslong %>%
         theme(plot.background = element_rect(fill = 'white'))
 p2
 
-ggsave(plot = p1, filename = 
-         file.path(Plots,'FigSXX.png'),width = 10,height = 5)
+#ggsave(plot = p1, filename = 
+#         file.path(Plots,'FigSXX.png'),width = 10,height = 5)
 ggsave(plot = p2, filename = 
-         file.path(Plots,'FigXX.png'),width = 10,height = 5)
+         file.path(Plots,'FigS11.png'),width = 10,height = 5)
 
+p2
 ```
 
 #Figure 6 - tornado plot
